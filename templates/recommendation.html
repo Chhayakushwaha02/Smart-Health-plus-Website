@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="max-width:900px; margin:20px 0 20px 20px;">
+
+    <h2 style="color:#1f2937; margin-bottom:10px;">
+        ⭐ Health Recommendations
+    </h2>
+
+    <!-- Generate Button (Purple Gradient + Hover/Click Effects) -->
+    <button onclick="loadRecommendations()" 
+        style="
+            background: linear-gradient(135deg,#a18cd1,#fbc2eb);
+            color:white;
+            padding:8px 20px;
+            border-radius:10px;
+            border:none;
+            font-weight:600;
+            margin-bottom:12px;
+            cursor:pointer;
+            box-shadow:0 6px 14px rgba(0,0,0,0.15);
+            transition: all 0.25s ease;
+        "
+        onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 8px 18px rgba(0,0,0,0.25)';"
+        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 6px 14px rgba(0,0,0,0.15)';"
+        onmousedown="this.style.transform='scale(0.96)';"
+        onmouseup="this.style.transform='translateY(-3px)';"
+    >
+        Generate My Recommendations
+    </button>
+
+    <!-- Recommendation Output Box -->
+    <div id="recommendationBox" style="
+        margin-top:12px;
+        padding:18px;
+        background: linear-gradient(135deg,#ede7f6,#d1c4e9);
+        color:#1e3a8a;
+        border-radius:12px;
+        line-height:1.6;
+        box-shadow:0 6px 14px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    "></div>
+
+    <!-- Health Summary Box -->
+    <div id="healthSummaryBox" style="
+        margin-top:18px;
+        display:none;
+        padding:18px;
+        background: linear-gradient(135deg,#e3f2fd,#bbdefb);
+        border-radius:12px;
+        box-shadow:0 6px 16px rgba(0,0,0,0.12);
+        transition: all 0.3s ease;
+    ">
+        <h4 style="color:#111827; margin-bottom:8px;">
+            Your Health Summary
+        </h4>
+
+        <pre id="healthSummaryText" style="
+            background:#f9fafb;
+            padding:12px;
+            border-radius:8px;
+            font-size:14px;
+            color:#374151;
+            line-height:1.6;
+            border:1px solid #e5e7eb;
+            margin-bottom:14px;
+        "></pre>
+
+        <!-- Get Recommendation from Chatbot (Blue Gradient + Hover/Click Effects) -->
+        <button onclick="sendToChatbot()" 
+            style="
+                background: linear-gradient(135deg,#4facfe,#00c6ff);
+                color:white;
+                padding:8px 20px;
+                border-radius:10px;
+                border:none;
+                font-weight:600;
+                cursor:pointer;
+                box-shadow:0 6px 14px rgba(0,0,0,0.15);
+                transition: all 0.25s ease;
+            "
+            onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 8px 18px rgba(0,0,0,0.25)';"
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 6px 14px rgba(0,0,0,0.15)';"
+            onmousedown="this.style.transform='scale(0.96)';"
+            onmouseup="this.style.transform='translateY(-3px)';"
+        >
+            Get Recommendation from Chatbot
+        </button>
+    </div>
+
+</div>
+
+<script src="/static/js/recommendation.js"></script>
+
+<script>
+function sendToChatbot() {
+    const summary = document.getElementById("healthSummaryText").innerText;
+
+    if (!summary.trim()) {
+        alert("Health summary not available.");
+        return;
+    }
+
+    const finalMessage = `
+${summary}
+
+Please analyze my health and suggest:
+• Personalized recommendations
+• Meditation (if required)
+• Relaxation techniques
+• Exercises
+`;
+
+    navigator.clipboard.writeText(finalMessage).then(() => {
+        // ✅ This alert is exactly like before — ensures user sees message & redirect works
+        alert(
+            "✅ Your health summary has been copied automatically.\n\n" + 
+            "Just paste (Ctrl + V) it into the chatbot to get personalized recommendations."
+        );
+        window.location.href = "/chatbot";
+    }).catch(() => {
+        alert("Clipboard permission denied.");
+    });
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Smart Health Plus</title>
+
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --text-color: #000;
+            --nav-bg: #a18cd1;
+            --card-bg: #ffffff;
+            --card-hover: #007BFF;
+        }
+
+        body.dark {
+            --bg-color: #121212;
+            --text-color: #ffffff;
+            --nav-bg: #1f1f1f;
+            --card-bg: #1e1e1e;
+            --card-hover: #333333;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            transition: 0.3s ease;
+        }
+
+        nav {
+            background: var(--nav-bg);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-left a,
+        .nav-right a {
+            color: white;
+            margin-right: 15px;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .logout-btn {
+            background: red;
+            padding: 6px 12px;
+            border-radius: 5px;
+        }
+
+        .dark-toggle {
+            background: #000;
+            padding: 6px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+            color: #fff;
+        }
+
+        body.dark .dark-toggle {
+            background: #fff;
+            color: #000;
+        }
+
+        .container {
+            padding: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+<nav>
+    <!-- LEFT MENU -->
+<div class="nav-left">
+
+{% if session.get("role") == "admin" %}
+    <a href="/admin/dashboard"> Dashboard</a>
+    <a href="/admin/feedback"> Users Feedback</a>
+    <a href="/admin/users">Users Management</a>
+{% else %}
+
+    {% if session.get("gender") == "female" %}
+        <a href="/female/dashboard">Dashboard</a>
+        <a href="/period">Period Tracker</a>  <!-- Added here right after Dashboard -->
+    {% else %}
+        <a href="/dashboard">Dashboard</a>
+    {% endif %}
+
+    <a href="/sleep">Sleep</a>
+    <a href="/hydration">Hydration</a>
+    <a href="/nutrition">Nutrition</a>
+    <a href="/fitness">Fitness</a>
+    <a href="/stress">Stress</a>
+    <a href="/mood">Mood</a>
+    <a href="/reminder">Reminder</a>
+    <a href="/goal">Goals</a>
+    <a href="/recommendation">Recommendations</a>
+
+    {% if session.get("gender") == "female" %}
+        <a href="/chatbot">Chatbot</a>
+    {% else %}
+        <a href="/chatbot">Chatbot</a>
+    {% endif %}
+
+    <a href="/profile">Profile</a>
+{% endif %}
+</div>
+
+    <!-- RIGHT MENU -->
+    <div class="nav-right">
+        <span class="dark-toggle" onclick="toggleDark()">🌙</span>
+        <a href="/logout" class="logout-btn">Logout</a>
+    </div>
+</nav>
+
+<div class="container">
+    {% block content %}{% endblock %}
+</div>
+
+<script>
+    function toggleDark() {
+        document.body.classList.toggle("dark");
+        localStorage.setItem("darkMode", document.body.classList.contains("dark"));
+    }
+
+    if (localStorage.getItem("darkMode") === "true") {
+        document.body.classList.add("dark");
+    }
+</script>
+
+</body>
+</html>
+

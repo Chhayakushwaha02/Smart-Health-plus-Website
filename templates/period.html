@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2 style="text-align:left; color:#333;">🌸 Period Tracking</h2>
+
+<div class="period-container">
+
+    <!-- Period Input Form -->
+    <div class="period-card">
+        <form method="POST" action="/period/add">
+            <label for="last_period_date">Start Date:</label>
+            <input type="date" id="last_period_date" name="last_period_date" required>
+
+            <label for="cycle_length">Cycle Length (days):</label>
+            <input type="number" id="cycle_length" name="cycle_length" placeholder="--" min="20" max="45">
+
+            <label for="period_duration">Period Duration (days):</label>
+            <input type="number" id="period_duration" name="period_duration" placeholder="-" min="1" max="10">
+
+            <label for="symptoms">Symptoms / Notes:</label>
+            <textarea id="symptoms" name="symptoms" placeholder="Pain, cramps, mood, etc."></textarea>
+
+            <button type="submit" class="period-btn"
+                style="background: linear-gradient(135deg,#ff758c,#ff4d6d);"
+                onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 8px 18px rgba(0,0,0,0.25)';"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 6px 14px rgba(0,0,0,0.15)';"
+                onmousedown="this.style.transform='scale(0.96)';"
+                onmouseup="this.style.transform='translateY(-3px)';">
+                Save Details
+            </button>
+        </form>
+    </div>
+
+    {% if record %}
+    <div class="period-summary">
+        <h3>Last Period Info :-</h3>
+        <p><strong>Last Period Date:</strong> {{ record["last_period_date"] }}</p>
+        <p><strong>Predicted Next Period:</strong> {{ predicted_date.strftime("%Y-%m-%d") }}</p>
+        <p><strong>Current Cycle Phase:</strong> {{ get_cycle_phase(record["last_period_date"], record["cycle_length"]) }}</p>
+
+        <h4>🌸 Wellness Suggestions</h4>
+        <pre>{{ wellness_suggestions or "No suggestions available." }}</pre>
+
+        <h4>👩 Female Health Summary</h4>
+        <pre>{{ female_health_summary or "No summary available." }}</pre>
+
+        {% if female_health_summary %}
+        <button id="send-to-chatbot" class="period-btn"
+            style="background: linear-gradient(135deg,#4facfe,#00c6ff);"
+            onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 8px 18px rgba(0,0,0,0.25)';"
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 6px 14px rgba(0,0,0,0.15)';"
+            onmousedown="this.style.transform='scale(0.96)';"
+            onmouseup="this.style.transform='translateY(-3px)';">
+            Get advice from Chatbot
+        </button>
+        {% endif %}
+    </div>
+
+    <div style="flex:1 1 400px; margin-top:15px; display:flex; gap:10px; flex-wrap:wrap;">
+        <a href="/period/history" class="period-btn" style="background: linear-gradient(135deg,#6c5ce7,#a29bfe);"
+            onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 8px 18px rgba(0,0,0,0.25)';"
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 6px 14px rgba(0,0,0,0.15)';"
+            onmousedown="this.style.transform='scale(0.96)';"
+            onmouseup="this.style.transform='translateY(-3px)';">
+            View Period History
+        </a>
+        <a href="/period/charts" class="period-btn" style="background: linear-gradient(135deg,#6c5ce7,#a29bfe);"
+            onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 8px 18px rgba(0,0,0,0.25)';"
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 6px 14px rgba(0,0,0,0.15)';"
+            onmousedown="this.style.transform='scale(0.96)';"
+            onmouseup="this.style.transform='translateY(-3px)';">
+            Show Charts
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.period-container { display:flex; flex-wrap:wrap; gap:30px; justify-content:center; margin-top:20px; }
+
+/* ✅ Removed moving effect from boxes */
+.period-card, .period-summary { 
+    flex:1 1 400px; 
+    background:#fff0f8; 
+    padding:20px; 
+    border-radius:12px; 
+    box-shadow:0 6px 20px rgba(0,0,0,0.08); 
+    transition: none; /* no hover/move effect */
+}
+
+.period-summary { background:#f0f4ff; }
+
+.period-card label, .period-summary h4 { display:block; margin-top:10px; font-weight:bold;}
+.period-card input, .period-card textarea { width:100%; padding:8px; margin-top:4px; border-radius:6px; border:1px solid #ccc; transition: all 0.25s ease;}
+.period-card input:focus, .period-card textarea:focus { border-color:#ff758c; box-shadow:0 0 0 2px rgba(255,117,140,0.2); outline:none; }
+
+.period-btn { 
+    margin-top:15px; 
+    padding:10px 20px; 
+    font-size:14px; 
+    border-radius:8px; 
+    color:white; 
+    border:none; 
+    cursor:pointer; 
+    text-align:center; 
+    text-decoration:none; 
+    transition: all 0.25s ease; 
+    box-shadow:0 6px 14px rgba(0,0,0,0.15); 
+}
+.period-btn:hover { opacity:0.95; }
+</style>
+
+<script>
+document.getElementById("send-to-chatbot")?.addEventListener("click", () => {
+    const summary = `Last Period Info:
+- Last Period Date: {{ record["last_period_date"] }}
+- Predicted Next Period: {{ predicted_date.strftime("%Y-%m-%d") }}
+- Current Cycle Phase: {{ get_cycle_phase(record["last_period_date"], record["cycle_length"]) }}
+
+Female Health Summary:
+{{ (female_health_summary or '')|tojson|safe }}
+
+Provide more suggestions and good advice.`;
+
+    navigator.clipboard.writeText(summary).then(() => {
+        alert("✅ Your female health summary and period info have been copied automatically.\n\n" +
+            "Just paste(Ctrl + V) it into the chatbot to get personalized advice.");
+        window.location.href = "/chatbot";
+    }).catch(() => { alert("❌ Clipboard permission denied."); });
+});
+</script>
+
+{% endblock %}

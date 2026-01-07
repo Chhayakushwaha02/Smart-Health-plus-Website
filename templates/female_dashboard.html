@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>🌸 Welcome to Smart Health Plus</h2>
+
+<p style="font-size:16px; line-height:1.6;">
+    Smart Health Plus is a holistic personal wellness tracker designed to monitor, track, and improve overall well-being. 
+    It focuses on stress, sleep, nutrition, fitness, hydration, and 
+    mental health and menstrual cycle tracking for better insights and care.
+    The system provides intelligent and modular features to help users maintain a healthy and balanced lifestyle.
+</p>
+
+<hr>
+
+<!-- Daily Wellness -->
+<h3>💚 Daily Wellness</h3>
+<div class="grid">
+    <a href="/sleep" class="card">😴 Sleep</a>
+    <a href="/hydration" class="card">💧 Hydration</a>
+    <a href="/nutrition" class="card">🥗 Nutrition</a>
+    <a href="/fitness" class="card">🏃 Fitness</a>
+    <a href="/stress" class="card">😖 Stress</a>
+    <a href="/mood" class="card">😊 Mood</a>
+</div>
+
+<hr>
+
+<!-- Female Health -->
+<h3>🌺 Female Health</h3>
+<div class="grid">
+    <a href="/period" class="card">🩸 Period Tracker</a>
+</div>
+
+<hr>
+
+<!-- Other Features -->
+<h3>📌 Other Features</h3>
+<div class="grid">
+    <a href="/reminder" class="card">⏰ Reminder</a>
+    <a href="/goal" class="card">🎯 Goals</a>
+    <a href="/recommendation" class="card">📊 View Recommendations</a>
+    <a href="/chatbot" class="card">🤖 Chatbot</a>
+    <a href="/profile" class="card">👤 Profile</a>
+</div>
+
+<!-- FEEDBACK BUTTON -->
+<button id="feedbackBtn">💬</button>
+
+<!-- FEEDBACK OVERLAY -->
+<div id="feedbackOverlay">
+    <div class="feedback-modal">
+        <span id="closeFeedback">✖</span>
+        <h2>💬 Feedback</h2>
+
+        <form id="feedbackForm">
+            <label>😍 Rate Us</label>
+            <select name="rating" required>
+                <option value="">Select</option>
+                <option>😍 Excellent</option>
+                <option>😊 Good</option>
+                <option>😐 Average</option>
+                <option>😕 Poor</option>
+                <option>😡 Bad</option>
+            </select>
+
+            <label>💚 How useful is Smart Health Plus?</label>
+            <select name="usefulness" required>
+                <option value="">Select</option>
+                <option>💚 Very Useful</option>
+                <option>🙂 Useful</option>
+                <option>😐 Not Useful</option>
+            </select>
+
+            <label>📌 Feedback Type</label>
+            <select name="feedback_type" required>
+                <option>💬 General Feedback</option>
+                <option>✨ Feature Request</option>
+                <option>🎨 UI Improvement</option>
+                <option>🐞 Bug / Issue</option>
+            </select>
+
+            <label>🛠 What should we improve?</label>
+            <textarea name="improve" placeholder="Tell us what needs improvement..."></textarea>
+
+            <label>🚀 What feature should we add next?</label>
+            <textarea name="feature" placeholder="Your feature ideas..."></textarea>
+
+            <div id="feedbackSuccess" class="success-msg">
+                ✅ Thank you for your feedback!
+            </div>
+
+            <button type="submit" class="submit-btn">Submit Feedback ❤️</button>
+        </form>
+    </div>
+</div>
+
+<style>
+/* ===== GRID & CARDS ===== */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.card {
+    background: #f1f8ff;
+    padding: 22px;
+    text-align: center;
+    text-decoration: none;
+    color: black;
+    font-weight: bold;
+    border-radius: 14px;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    cursor: pointer;
+}
+
+/* Hover lift */
+.card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 30px rgba(13,110,253,0.25);
+}
+
+/* Click pop effect */
+@keyframes clickPop {
+    0% { transform: scale(1); }
+    30% { transform: scale(0.96); }
+    60% { transform: scale(1.04); }
+    100% { transform: scale(1); }
+}
+.click-pop {
+    animation: clickPop 0.3s ease;
+}
+
+/* ===== FEEDBACK BUTTON ===== */
+#feedbackBtn {
+    position: fixed;
+    bottom: 25px;
+    right: 25px;
+    background: #5b38ad;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 55px;
+    height: 55px;
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 999;
+}
+
+/* ===== FEEDBACK OVERLAY ===== */
+#feedbackOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+.feedback-modal {
+    background: linear-gradient(135deg, #fdfbfb, #ebedee);
+    padding: 25px;
+    border-radius: 15px;
+    width: 380px;
+    box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+    position: relative;
+}
+
+.feedback-modal h2 {
+    text-align: center;
+}
+
+#closeFeedback {
+    position: absolute;
+    top: 12px;
+    right: 15px;
+    cursor: pointer;
+}
+
+.feedback-modal label {
+    display: block;
+    margin-top: 12px;
+    font-weight: bold;
+}
+
+.feedback-modal select,
+.feedback-modal textarea {
+    width: 100%;
+    padding: 8px;
+    margin-top: 5px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+}
+
+.feedback-modal textarea {
+    resize: none;
+    height: 70px;
+}
+
+.submit-btn {
+    margin-top: 15px;
+    width: 100%;
+    background: #2c9fe6;
+    color: white;
+    padding: 10px;
+    border: none;
+    border-radius: 25px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.submit-btn:hover {
+    background: #2c9fe6;
+    transform: translateY(-3px);
+}
+
+.success-msg {
+    display: none;
+    margin-top: 15px;
+    padding: 10px;
+    background: #e8f5e9;
+    color: #2e7d32;
+    border-radius: 10px;
+    text-align: center;
+    font-weight: bold;
+}
+</style>
+
+<script>
+const feedbackBtn = document.getElementById("feedbackBtn");
+const feedbackOverlay = document.getElementById("feedbackOverlay");
+const closeFeedback = document.getElementById("closeFeedback");
+const feedbackForm = document.getElementById("feedbackForm");
+const successMsg = document.getElementById("feedbackSuccess");
+
+feedbackBtn.onclick = () => feedbackOverlay.style.display = "flex";
+closeFeedback.onclick = () => feedbackOverlay.style.display = "none";
+
+feedbackOverlay.onclick = (e) => {
+    if (e.target === feedbackOverlay) feedbackOverlay.style.display = "none";
+};
+
+feedbackForm.addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    fetch("/submit-feedback", {
+        method: "POST",
+        body: new FormData(this)
+    }).then(() => {
+        successMsg.style.display = "block";
+        this.reset();
+
+        setTimeout(() => {
+            successMsg.style.display = "none";
+            feedbackOverlay.style.display = "none";
+        }, 2000);
+    });
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 style="text-align:center;">💪 Fitness Tracker</h2>
+
+<div style="
+    max-width:450px;
+    margin:20px auto;
+    padding:20px;
+    border-radius:16px;
+    background:linear-gradient(135deg,#fdfbfb,#ebedee);
+    box-shadow:0 8px 20px rgba(0,0,0,0.12);
+    animation:fadeIn 0.6s ease-in-out;
+">
+
+    <label><b>Workout Minutes</b></label>
+    <input type="number" id="workoutMinutes" placeholder="Enter minutes" 
+           style="width:95%;padding:10px;border-radius:10px;">
+
+    <br><br>
+
+    <label><b>Workout Type</b></label>
+    <select id="workoutType" style="width:100%;padding:10px;border-radius:10px;">
+        <option value="">Select</option>
+        <option value="Cardio">Cardio</option>
+        <option value="Strength Training">Strength Training</option>
+        <option value="Yoga">Yoga</option>
+        <option value="Pilates">Pilates</option>
+        <option value="Other">Other</option>
+    </select>
+
+    <br><br>
+
+    <label><b>Daily Steps</b></label>
+    <input type="number" id="dailySteps" placeholder="Enter steps" 
+           style="width:95%;padding:10px;border-radius:10px;">
+
+    <br><br>
+
+    <div style="display:flex;gap:10px;">
+        <button onclick="saveFitness()" class="cute-btn save-btn">
+            Save
+        </button>
+        <button onclick="copyFitnessForChatbot()" class="cute-btn chat-btn">
+            Ask Chatbot
+        </button>
+    </div>
+
+    <button onclick="window.location.href='/stress'"
+            class="cute-btn next-btn"
+            style="margin-top:12px;width:100%;">
+        Next ➜
+    </button>
+
+    <p id="fitnessMsg" style="margin-top:15px;font-weight:bold;"></p>
+</div>
+
+<style>
+/* Buttons base */
+.cute-btn{padding:10px;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.25s ease;box-shadow:0 4px 10px rgba(0,0,0,0.15);}
+.save-btn{flex:1;background:linear-gradient(135deg,#4facfe,#00c6ff);color:white;}
+.save-btn:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0,0.2);}
+.save-btn:active{transform:scale(0.95);}
+.chat-btn{flex:1;background:linear-gradient(135deg,#a18cd1,#fbc2eb);color:white;}
+.chat-btn:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(0,0,0,0.2);}
+.chat-btn:active{transform:scale(0.95);}
+.next-btn{background:linear-gradient(135deg,#43e97b,#38f9d7);color:#004d40;}
+.next-btn:hover{transform:translateY(-2px);}
+.next-btn:active{transform:scale(0.96);}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+</style>
+
+<script>
+let lastSavedFitnessData = null;
+
+function saveFitness() {
+    const minutes = document.getElementById("workoutMinutes").value;
+    const type = document.getElementById("workoutType").value;
+    const steps = document.getElementById("dailySteps").value;
+    const msg = document.getElementById("fitnessMsg");
+
+    if (!minutes && !steps) {
+        msg.style.color = "red";
+        msg.innerText = "Please enter workout minutes or daily steps.";
+        return;
+    }
+    if (minutes && minutes <= 0) { msg.style.color="red"; msg.innerText="Workout minutes must be >0"; return; }
+    if (steps && steps <= 0) { msg.style.color="red"; msg.innerText="Daily steps must be >0"; return; }
+
+    // ---------------- NORMALIZED KEYS ----------------
+    const fitnessData = {
+        minutes: minutes ? Number(minutes) : 0,
+        type: type || "Unspecified",
+        steps: steps ? Number(steps) : 0
+    };
+
+    fetch("/save-health-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            category: "fitness",
+            value: fitnessData
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        lastSavedFitnessData = fitnessData;
+        msg.style.color = "green";
+        msg.innerText = data.suggestion || "Fitness data saved successfully.";
+    })
+    .catch(err => {
+        msg.style.color = "red";
+        msg.innerText = "Error saving fitness data.";
+        console.error(err);
+    });
+}
+
+function copyFitnessForChatbot() {
+    const msg = document.getElementById("fitnessMsg");
+    if (!lastSavedFitnessData) {
+        msg.style.color = "red";
+        msg.innerText = "Please save fitness data first.";
+        return;
+    }
+
+    const text = `Here is my fitness data, please provide guidance:
+Workout Minutes: ${lastSavedFitnessData.minutes || "Not provided"}
+Workout Type: ${lastSavedFitnessData.type || "Not specified"}
+Daily Steps: ${lastSavedFitnessData.steps || "Not provided"}`;
+
+    navigator.clipboard.writeText(text).then(() => {
+        alert("Your fitness data is copied.\nPaste it into the chatbot for guidance.");
+        window.location.href = "/chatbot";
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="profile-container">
+
+<h2>👤 User Profile</h2>
+<p><strong>Name:</strong> {{ name }}</p>
+<p><strong>Email:</strong> {{ email }}</p>
+<p><strong>Mobile:</strong> {{ mobile if mobile else 'Not Provided' }}</p>
+
+<!-- EDIT PROFILE BUTTON -->
+<button id="editProfileBtn">Edit Profile</button>
+
+<!-- EDIT PROFILE FORM -->
+<div id="editProfileForm" class="section">
+    <h3>Edit Profile</h3>
+    <form id="profileForm">
+        <label>Name:</label><br>
+        <input type="text" name="name" value="{{ name }}" required><br>
+
+        <label>Email:</label><br>
+        <input type="email" name="email" value="{{ email }}" required><br>
+
+        <label>Mobile:</label><br>
+        <input type="text" name="mobile" value="{{ mobile or '' }}" required><br>
+
+        <label>Age:</label><br>
+        <input type="number" name="age" value="{{ age or '' }}" min="1"><br>
+
+        <label>Gender:</label><br>
+        <select name="gender">
+            <option value="">Select</option>
+            <option value="Male" {% if gender=='Male' %}selected{% endif %}>Male</option>
+            <option value="Female" {% if gender=='Female' %}selected{% endif %}>Female</option>
+            <option value="Other" {% if gender=='Other' %}selected{% endif %}>Other</option>
+        </select><br>
+
+        <label>Password:</label><br>
+        <input type="password" name="password" placeholder="Leave blank to keep current"><br>
+
+        <label>Confirm Password:</label><br>
+        <input type="password" name="confirm_password" placeholder="Leave blank to keep current"><br>
+
+        <button type="submit">Save Changes</button>
+        <button type="button" onclick="hideEditForm()">Cancel</button>
+    </form>
+</div>
+
+<div class="profile-buttons">
+    <button onclick="showSaved()">View Saved Health Data</button>
+    <button onclick="showWeekly()">Weekly Summary</button>
+    <button onclick="showMonthly()">Monthly Summary</button>
+    <button onclick="showDateForm()">Download Health Report (PDF)</button>
+</div>
+
+<!-- DATE FORM -->
+<div id="dateForm" class="section">
+    <label>Start Date:</label>
+    <input type="date" id="start_date">
+    <label>End Date:</label>
+    <input type="date" id="end_date">
+    <button onclick="downloadWithDate()">Download PDF</button>
+</div>
+
+<!-- SAVED DATA -->
+<div id="saved" class="section">
+<h3>Your Saved Health Data</h3>
+
+{% for date, entries in timeline_data.items() %}
+<div class="date-block">
+    <strong>{{ date }}</strong>
+    {% for item in entries %}
+    <div class="log-item">
+        • <b>{{ item.time }}</b> –
+        <b>{{ item.category }}</b>: {{ item.input_value }} <br>
+        <span style="color:#555">{{ item.recommendation }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}
+</div>
+
+<!-- WEEKLY SUMMARY -->
+<div id="weekly" class="section">
+<h2>Weekly Summary</h2>
+{% if weekly_summary %}
+<p>{{ weekly_summary.summary_text }}</p>
+<canvas id="weeklyChart"></canvas>
+{% else %}
+<p>No weekly data available.</p>
+{% endif %}
+</div>
+
+<!-- MONTHLY SUMMARY -->
+<div id="monthly" class="section">
+<h2>Monthly Summary</h2>
+{% if monthly_summary %}
+<p>{{ monthly_summary.summary_text }}</p>
+<canvas id="monthlyChart"></canvas>
+{% else %}
+<p>No monthly data available.</p>
+{% endif %}
+</div>
+
+<!-- DATA HOLDER -->
+<div id="summary-data"
+     data-weekly='{{ weekly_summary | tojson | safe if weekly_summary else "{}" }}'
+     data-monthly='{{ monthly_summary | tojson | safe if monthly_summary else "{}" }}'>
+</div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+function hideAll() {
+    ["saved","weekly","monthly","dateForm","editProfileForm"].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.style.display = "none";
+    });
+}
+function showSaved() { hideAll(); document.getElementById("saved").style.display = "block"; }
+function showWeekly() { hideAll(); document.getElementById("weekly").style.display = "block"; renderWeekly(); }
+function showMonthly() { hideAll(); document.getElementById("monthly").style.display = "block"; renderMonthly(); }
+function showDateForm() { hideAll(); document.getElementById("dateForm").style.display = "block"; }
+function hideEditForm() { document.getElementById("editProfileForm").style.display = "none"; }
+
+function downloadWithDate(){
+    const start = document.getElementById("start_date").value;
+    const end = document.getElementById("end_date").value;
+    if(!start || !end){ alert("Please select both dates"); return; }
+    window.open(`/download-health-report?start_date=${start}&end_date=${end}`, "_blank");
+}
+
+/* ================= CHARTS ================= */
+const dataDiv = document.getElementById("summary-data");
+const WEEKLY = JSON.parse(dataDiv.dataset.weekly || "{}");
+const MONTHLY = JSON.parse(dataDiv.dataset.monthly || "{}");
+let weeklyChart, monthlyChart;
+
+function renderWeekly(){
+    if(!WEEKLY.dates) return;
+    if (weeklyChart) weeklyChart.destroy();
+
+    weeklyChart = new Chart(document.getElementById("weeklyChart"), {
+        type: "line",
+        data: {
+            labels: WEEKLY.dates,
+            datasets: [
+                { label: "Sleep", data: WEEKLY.sleep, borderColor:"#1f77b4", yAxisID:"ySmall", tension:0.3 },
+                { label: "Hydration", data: WEEKLY.hydration, borderColor:"#ff7f0e", yAxisID:"ySmall", tension:0.3 },
+                { label: "Nutrition", data: WEEKLY.nutrition, borderColor:"#2ca02c", yAxisID:"ySmall", tension:0.3 },
+                { label: "Stress", data: WEEKLY.stress, borderColor:"#9467bd", yAxisID:"ySmall", tension:0.3 },
+                { label: "Mood", data: WEEKLY.mood, borderColor:"#8c564b", yAxisID:"ySmall", tension:0.3 },
+                { label: "Fitness", data: WEEKLY.fitness_minutes, borderColor:"#d62728", yAxisID:"yMedium", tension:0.3 },
+                { label: "Health Score", data: WEEKLY.health_score, borderColor:"#e377c2", yAxisID:"yLarge", tension:0.3 }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' } },
+            scales: {
+                ySmall: { type: 'linear', position: 'left', beginAtZero: true, title: { display:true, text:"Low Range (Mood / Stress / Nutrition)" } },
+                yMedium: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea:false }, title: { display:true, text:"Fitness (Minutes)" } },
+                yLarge: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea:false }, title: { display:true, text:"Health Score" } }
+            }
+        }
+    });
+}
+
+
+function renderMonthly(){
+    if(!MONTHLY.dates) return;
+    if (monthlyChart) monthlyChart.destroy();
+
+    monthlyChart = new Chart(document.getElementById("monthlyChart"), {
+        type: "bar",
+        data: {
+            labels: MONTHLY.dates,
+            datasets: [
+                { label: "Sleep", data: MONTHLY.sleep, backgroundColor:"#1f77b4", yAxisID:"ySmall" },
+                { label: "Hydration", data: MONTHLY.hydration, backgroundColor:"#ff7f0e", yAxisID:"ySmall" },
+                { label: "Nutrition", data: MONTHLY.nutrition, backgroundColor:"#2ca02c", yAxisID:"ySmall" },
+                { label: "Stress", data: MONTHLY.stress, backgroundColor:"#9467bd", yAxisID:"ySmall" },
+                { label: "Mood", data: MONTHLY.mood, backgroundColor:"#8c564b", yAxisID:"ySmall" },
+                { label: "Fitness", data: MONTHLY.fitness_minutes, backgroundColor:"#d62728", yAxisID:"yMedium" },
+                { label: "Health Score", data: MONTHLY.health_score, backgroundColor:"#e377c2", yAxisID:"yLarge" }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' } },
+            scales: {
+                ySmall: { beginAtZero: true, title: { display:true, text:"Low Range Metrics" } },
+                yMedium: { beginAtZero: true, grid: { drawOnChartArea:false }, title: { display:true, text:"Fitness (Minutes)" } },
+                yLarge: { beginAtZero: true, grid: { drawOnChartArea:false }, title: { display:true, text:"Health Score" } }
+            }
+        }
+    });
+}
+
+/* ================= EDIT PROFILE ================= */
+document.getElementById("editProfileBtn").addEventListener("click", () => {
+    hideAll(); document.getElementById("editProfileForm").style.display="block";
+});
+
+document.getElementById("profileForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData(e.target);
+    const res = await fetch("/update-profile", {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await res.json();
+
+    if (data.status === "success") {
+        alert(data.message);
+
+        // 🔥 IMPORTANT: Redirect instead of reload
+        if (data.redirect_url) {
+            window.location.href = data.redirect_url;
+        } else {
+            window.location.reload();
+        }
+    } else {
+        alert(data.message || "Error updating profile");
+    }
+});
+if (data.status === "success") {
+    alert(data.message);
+    window.location.href = data.redirect_url;
+}
+
+</script>
+
+<style>
+/* ===== GLOBAL ===== */
+.profile-container {
+    padding: 30px;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    max-width: 1100px;
+    margin: auto;
+    color: #02080d;
+}
+
+h2, h3 {
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+/* ===== PROFILE INFO ===== */
+.profile-container p {
+    margin: 4px 0;
+    font-size: 15px;
+}
+
+/* ===== BUTTON GROUP ===== */
+.profile-buttons {
+    display: flex;
+    gap: 12px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+}
+
+/* Purple gradient buttons */
+.profile-buttons button,
+#dateForm button,
+#profileForm button {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #a18cd1, #fbc2eb);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.25s ease;
+    box-shadow: 0 6px 16px rgba(161,140,209,0.25);
+}
+
+.profile-buttons button:hover,
+#dateForm button:hover,
+#profileForm button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(161,140,209,0.35);
+}
+
+/* ===== EDIT PROFILE BUTTON (Blue Gradient) ===== */
+#editProfileBtn {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    background: linear-gradient(135deg,#4facfe,#00c6ff);
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.25s ease;
+    box-shadow: 0 6px 16px rgba(79,172,254,0.25);
+}
+
+#editProfileBtn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(79,172,254,0.35);
+}
+
+/* Cancel button remains neutral */
+#profileForm button[type="button"] {
+    background: #e5e7eb;
+    color: #374151;
+    box-shadow: none;
+}
+
+#profileForm button[type="button"]:hover {
+    background: #d1d5db;
+}
+
+/* ===== SECTIONS ===== */
+.section {
+    display: none;
+    margin-top: 25px;
+    animation: fadeIn 0.3s ease;
+}
+
+.section {
+    display: none;
+    margin-top: 25px;
+}
+
+/* ===== CARDS ===== */
+.date-block,
+#editProfileForm,
+#dateForm,
+#weekly,
+#monthly,
+#saved {
+    background: linear-gradient(135deg,#ede7f6,#d1c4e9);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 25px rgba(161,140,209,0.15);
+}
+
+/* ===== SAVED DATA ===== */
+.date-block strong {
+    font-size: 16px;
+    color: #4f46e5; /* purple heading */
+}
+
+.log-item {
+    margin-left: 10px;
+    margin-top: 10px;
+    padding-left: 10px;
+    border-left: 3px solid #a18cd1; /* purple line */
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* ===== FORMS ===== */
+#editProfileForm input,
+#editProfileForm select,
+#dateForm input {
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    width: 260px;
+    border-radius: 6px;
+    border: 1px solid #d1c4e9; /* subtle purple border */
+    font-size: 14px;
+    transition: all 0.25s ease;
+}
+
+#editProfileForm input:focus,
+#editProfileForm select:focus,
+#dateForm input:focus {
+    outline: none;
+    border-color: #a18cd1;
+    box-shadow: 0 0 0 2px rgba(161,140,209,0.25);
+}
+
+/* ===== CHART CONTAINERS ===== */
+canvas {
+    margin-top: 15px;
+    background: #fafafa;
+    border-radius: 10px;
+    padding: 10px;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+    .profile-buttons {
+        flex-direction: column;
+    }
+
+    #editProfileForm input,
+    #editProfileForm select,
+    #dateForm input {
+        width: 100%;
+    }
+}
+</style>
+
+{% endblock %}

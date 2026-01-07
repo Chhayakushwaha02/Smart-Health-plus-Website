@@ -1,0 +1,79 @@
+import requests
+from database import get_db_connection
+
+# 1️⃣ Create user health summary
+def get_user_health_summary(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT category, input_value
+        FROM health_data
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+    """, (user_id,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return "No health data available."
+
+    summary = ""
+    seen = set()
+
+    for row in rows:
+        if row["category"] not in seen:
+            summary += f"{row['category'].capitalize()}: {row['input_value']}\n"
+            seen.add(row["category"])
+
+    return summary
+
+
+# 2️⃣ Call chatbot API (NO OpenAI)
+def get_chatbot_recommendation(health_summary):
+    url = "https://api.chatbase.co/api/v1/chat"  # change if different
+
+    headers = {
+        "Authorization": "Bearer YOUR_CHATBOT_API_KEY",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "chatbotId": "YOUR_CHATBOT_ID",
+        "messages": [
+            {
+                "role": "user",
+                "content": f"""
+You are Smart Health Plus AI assistant.
+
+Analyze the following health data and give:
+- Personalized health recommendation
+- Meditation or relaxation if needed
+- Exercise suggestion if relevant
+
+Health Data:
+{health_summary}
+"""
+            }
+        ]
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    data = response.json()
+
+    return data.get("text", "No recommendation generated.")
+
+
+# 3️⃣ Save recommendation
+def save_recommendation(user_id, recommendation):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO health_data (user_id, category, recommendation)
+        VALUES (?, ?, ?)
+    """, (user_id, "ai_recommendation", recommendation))
+
+    conn.commit()
+    conn.close()

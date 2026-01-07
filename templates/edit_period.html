@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>✏️ Edit Period Record</h2>
+
+<form method="POST" class="period-card">
+    <label>Cycle Length</label>
+    <input type="number" name="cycle_length" value="{{ record['cycle_length'] }}" required>
+
+    <label>Period Duration</label>
+    <input type="number" name="period_duration" value="{{ record['period_duration'] }}" required>
+
+    <label>Notes</label>
+    <textarea name="symptoms">{{ record['symptoms'] }}</textarea>
+
+    <button type="submit" class="period-btn">Update</button>
+    <a href="/period/history" class="period-btn">Cancel</a>
+</form>
+{% endblock %}

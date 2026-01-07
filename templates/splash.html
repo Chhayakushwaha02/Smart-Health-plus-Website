@@ -1,0 +1,37 @@
+<!DOCTYPE html> 
+<html>
+<head>
+    <title>Smart Health Plus</title>
+    <meta http-equiv="refresh" content="3;url=/auth">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            background: #a18cd1;
+            color: white;
+            font-size: 32px;
+        }
+        #loading {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: normal;
+            animation: blink 1s infinite;
+        }
+
+        /* Optional blinking effect for Loading... */
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div>Smart Health Plus</div>
+    <div id="loading">Loading...</div>
+</body>
+</html>

@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>💬 User Feedback</h2>
+
+<div class="table-actions">
+    <a class="btn" href="{{ url_for('export_feedback_pdf') }}">⬇ Export PDF</a>
+</div>
+
+<div class="feedback-table">
+    <table>
+        <thead>
+            <tr>
+                <th>User</th>
+                <th>Email</th>
+                <th>Rating</th>
+                <th>Useful</th>
+                <th>Type</th>
+                <th>Improve</th>
+                <th>Feature</th>
+                <th>Date & Time</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in feedbacks %}
+            <tr>
+                <td>{{ f[6] }}</td>
+                <td>{{ f[7] }}</td>
+                <td>{{ f[0] }}</td>
+                <td>{{ f[1] }}</td>
+                <td>{{ f[2] }}</td>
+                <td>{{ f[3] }}</td>
+                <td>{{ f[4] }}</td>
+                <td>{{ f[5].strftime("%Y-%m-%d %I:%M %p") }}</td>
+                <td>
+                    {% set days_diff = (current_date - f[5]).days %}
+                    {% if days_diff <= 2 %}
+                        <span class="status new">New</span>
+                    {% elif days_diff <= 7 %}
+                        <span class="status waiting">Waiting</span>
+                    {% else %}
+                        <span class="status reviewed">Reviewed</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<style>
+/* Font & container */
+.feedback-table table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 15px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 14px;
+}
+
+/* Table header */
+.feedback-table th {
+    background: linear-gradient(135deg, #2b689d, #00c6ff);
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 13px;
+    padding: 14px 10px;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Table cells */
+.feedback-table td {
+    border: 1px solid #e0e0e0;
+    padding: 12px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+/* Row hover effect */
+.feedback-table tbody tr {
+    background: #ffffff;
+    transition: all 0.3s ease;
+}
+
+.feedback-table tbody tr:nth-child(even) {
+    background: #f8f9fc;
+}
+
+.feedback-table tbody tr:hover {
+    background: #f1f4ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+/* Buttons */
+.table-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    background: linear-gradient(135deg, #2b689d, #00c6ff);
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    background: linear-gradient(135deg, #224abe, #1a2d8c);
+}
+
+/* Status badges */
+.status {
+    padding: 6px 14px;
+    border-radius: 50px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+    min-width: 70px;
+    text-align: center;
+    transition: all 0.2s ease;
+    color: #fff;
+}
+
+.status.new {
+    background: linear-gradient(135deg, #a18cd1, #fbc2eb);
+}
+
+.status.waiting {
+    background: linear-gradient(135deg, #4facfe, #00c6ff);
+}
+
+.status.reviewed {
+    background: linear-gradient(135deg, #55586d, #262d58);
+}
+
+.status:hover {
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    transform: translateY(-1px);
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 768px) {
+    .feedback-table th, .feedback-table td {
+        padding: 8px 6px;
+        font-size: 13px;
+    }
+
+    .btn {
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+}
+</style>
+
+{% endblock %}

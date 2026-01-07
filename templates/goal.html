@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div style="max-width:900px; margin:20px 0 20px 20px;">
+
+    <h2 style="color:#1f2937; margin-bottom:15px;">
+        🎯 Daily Wellness Goals
+    </h2>
+
+    <!-- Goals Section (UNCHANGED) -->
+    <div style="
+        background: linear-gradient(135deg,#ffffff,#f5f3ff);
+        padding:16px 20px;
+        border-radius:12px;
+        border:1px solid #e5e7eb;
+        margin-bottom:20px;
+        box-shadow:0 6px 16px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+    ">
+        <ul style="
+            list-style:none;
+            padding-left:0;
+            margin:0;
+            line-height:1.9;
+            color:#374151;
+            font-size:15px;
+        ">
+            <li>🛌 Sleep at least <b>7–8 hours</b></li>
+            <li>💧 Drink <b>8–10 glasses</b> of water</li>
+            <li>🥗 Avoid junk food. Eat <b>more fruits & vegetables</b></li>
+            <li>🚶 Walk <b>6000–8000 steps</b></li>
+            <li>🏋️ Focus on improving your <b>fitness</b></li>
+            <li>🧘 Maintain a <b>stress-free</b> routine</li>
+            <li>😊 Stay <b>happy & positive</b></li>
+        </ul>
+    </div>
+
+    <!-- Health Score (PURPLE – effects unchanged) -->
+    <div style="
+        background: linear-gradient(135deg,#f5f3ff,#ede9fe);
+        padding:20px;
+        border-radius:14px;
+        width:280px;
+        border:1px solid #ddd6fe;
+        margin-bottom:16px;
+        box-shadow:0 8px 18px rgba(124,58,237,0.22);
+        transition: all 0.3s ease;
+    ">
+        <h3 style="margin-bottom:8px; color:#6d28d9;">
+            💜 Your Health Score
+        </h3>
+
+        <h1 style="
+            font-size:42px;
+            margin:6px 0;
+            color:#7c3aed;
+        ">
+            {{ health_score }}/100
+        </h1>
+
+        <p style="font-size:15px; color:#4c1d95;">
+            <b>Wellness Status:</b> {{ wellness_index }}
+        </p>
+    </div>
+
+    <!-- Tip Section (BLUE – effects unchanged) -->
+    <div style="
+        background: linear-gradient(135deg,#eff6ff,#dbeafe);
+        padding:18px 20px;
+        border-radius:14px;
+        border:1px solid #bfdbfe;
+        color:#1e3a8a;
+        font-size:15px;
+        line-height:1.7;
+        box-shadow:0 6px 16px rgba(59,130,246,0.18);
+    ">
+        <b>🔵 Tip:</b> {{ tip }}
+    </div>
+
+</div>
+
+{% endblock %}

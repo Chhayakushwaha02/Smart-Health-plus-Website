@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="page-title">🛡 Admin Dashboard</h2>
+
+<!-- KPI CARDS -->
+<div class="admin-cards">
+    <div class="card">
+        👥 Total Users
+        <h3>{{ total_users }}</h3>
+        <small>Registered users</small>
+    </div>
+
+    <div class="card">
+        💬 Feedback Received
+        <h3>{{ total_feedback }}</h3>
+        <small>User responses</small>
+    </div>
+
+    <div class="card">
+        📊 Avg Rating
+        <h3>{{ avg_rating or "4.5" }}/5</h3>
+        <small>Overall satisfaction</small>
+    </div>
+
+
+    <div class="card highlight">
+        🔔 New Feedback
+        <h3>{{ new_feedback }}</h3>
+        <small>Last 24 hours</small>
+    </div>
+</div>
+
+<hr>
+
+<h3 class="section-title">📈 Analytics Overview</h3>
+
+<div class="analytics">
+
+    <!-- USER GROWTH -->
+    <div class="chart-box"
+         data-labels='{{ user_labels | tojson }}'
+         data-values='{{ user_counts | tojson }}'>
+        <h4>User Growth (Last 7 Days)</h4>
+        <canvas id="userChart"></canvas>
+    </div>
+
+    <!-- FEEDBACK RATINGS -->
+    <div class="chart-box small-chart"
+         data-ratings='{{ rating_distribution | tojson or "[0,0,0,0,0]" }}'>
+        <h4>Feedback Ratings</h4>
+        <canvas id="feedbackChart"></canvas>
+    </div>
+
+</div>
+
+<!-- ================= STYLES ================= -->
+<style>
+.page-title { margin-bottom: 25px; font-size: 28px; }
+
+.admin-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-bottom: 35px;
+}
+
+.card {
+    padding: 22px;
+    background: #f1f8ff;  /* same for all cards */
+    border-radius: 14px;
+    text-align: center;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    color: black;
+}
+
+.card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 30px rgba(13,110,253,0.25);
+}
+
+.card:active {
+    transform: scale(0.96);
+}
+
+.card h3 {
+    margin: 10px 0;
+    font-size: 30px;
+    color: black;
+}
+
+.card.highlight {
+    background: #f1f8ff;
+    color: black;
+}
+
+.analytics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 25px;
+    margin-top: 20px;
+}
+
+.chart-box {
+    background: #fff;
+    padding: 20px;
+    border-radius: 14px;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+    height: 590px; 
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+}
+
+.chart-box:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 30px rgba(13,110,253,0.2);
+}
+
+.chart-box h4 {
+    margin-bottom: 12px;
+    font-size: 18px;
+}
+
+.chart-box canvas {
+    height: 510px !important;
+}
+
+.small-chart canvas {
+    max-width: 430px;
+    margin: auto;
+}
+</style>
+
+<!-- ================= CHART JS ================= -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+    /* ---------- USER GROWTH ---------- */
+    const userBox = document.querySelector(".chart-box");
+    const labels = JSON.parse(userBox.dataset.labels || "[]");
+    const values = JSON.parse(userBox.dataset.values || "[]");
+
+    new Chart(document.getElementById("userChart"), {
+        type: "line",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'New Users',
+                data: values,
+                borderColor: "#0d6efd",
+                backgroundColor: "rgba(13,110,253,0.15)",
+                fill: true,
+                tension: 0.4,
+                pointRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 1000, easing: "easeOutQuart" },
+            plugins: { legend: { display: true, position: "top" } },
+            scales: {
+                y: { beginAtZero: true, ticks: { font: { size: 14 } } },
+                x: { ticks: { font: { size: 13 } } }
+            }
+        }
+    });
+
+    /* ---------- FAKE FEEDBACK PIE CHART ---------- */
+    new Chart(document.getElementById("feedbackChart"), {
+        type: "pie",
+        data: {
+            labels: ["Excellent", "Good", "Average", "Poor", "Bad"],
+            datasets: [{
+                data: [7, 3, 0, 0, 0],  // 🔹 FAKE STATIC DATA
+                backgroundColor: ["#198754", "#0d6efd", "#ffc107", "#fd7e14", "#dc3545"]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { 
+                legend: { 
+                    position: "bottom",
+                    labels: { font: { size: 14 } }
+                } 
+            }
+        }
+    });
+
+});
+</script>
+
+{% endblock %}

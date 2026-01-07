@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 style="text-align:center;">🥗 Nutrition Tracker</h2>
+
+<div style="
+    max-width:450px;
+    margin:20px auto;
+    padding:20px;
+    border-radius:16px;
+    background:linear-gradient(135deg,#fdfbfb,#ebedee);
+    box-shadow:0 8px 20px rgba(0,0,0,0.12);
+    animation:fadeIn 0.6s ease-in-out;
+">
+
+    <label><b>Nutrition Quality</b></label>
+    <select id="nutritionQuality"
+            onchange="toggleNutritionReason()"
+            style="width:100%;padding:10px;border-radius:10px;">
+        <option value="">Select</option>
+        <option value="Good">Good</option>
+        <option value="Average">Average</option>
+        <option value="Poor">Poor</option>
+    </select>
+
+    <br><br>
+
+    <label><b>Reason (required for Average / Poor)</b></label>
+    <select id="nutritionReason"
+            disabled
+            style="width:100%;padding:10px;border-radius:10px;">
+        <option value="">Select</option>
+        <option value="Junk Food">Junk Food</option>
+        <option value="Skipped Meals">Skipped Meals</option>
+        <option value="Outside Food">Outside Food</option>
+        <option value="Lack of Time">Lack of Time</option>
+    </select>
+
+    <br><br>
+
+    <div style="display:flex;gap:10px;">
+        <!-- SAVE BUTTON (BLUE) -->
+        <button onclick="saveNutrition()"
+                class="cute-btn save-btn">
+            Save
+        </button>
+
+        <!-- CHATBOT BUTTON (PURPLE) -->
+        <button onclick="copyNutritionForChatbot()"
+                class="cute-btn chat-btn">
+            Ask Chatbot
+        </button>
+    </div>
+
+    <!-- NEXT BUTTON -->
+    <button onclick="window.location.href='/fitness'"
+            class="cute-btn next-btn"
+            style="margin-top:12px;width:100%;">
+        Next ➜
+    </button>
+
+    <p id="nutritionMsg" style="margin-top:15px;font-weight:bold;"></p>
+</div>
+
+<style>
+/* Buttons base */
+.cute-btn{
+    padding:10px;
+    border:none;
+    border-radius:12px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    transition:all 0.25s ease;
+    box-shadow:0 4px 10px rgba(0,0,0,0.15);
+}
+
+/* Save button - BLUE */
+.save-btn{
+    flex:1;
+    background:linear-gradient(135deg,#4facfe,#00c6ff);
+    color:white;
+}
+.save-btn:hover{
+    transform:translateY(-2px);
+    box-shadow:0 6px 14px rgba(0,0,0,0.2);
+}
+.save-btn:active{
+    transform:scale(0.95);
+}
+
+/* Chatbot button - PURPLE */
+.chat-btn{
+    flex:1;
+    background:linear-gradient(135deg,#a18cd1,#fbc2eb);
+    color:white;
+}
+.chat-btn:hover{
+    transform:translateY(-2px);
+    box-shadow:0 6px 14px rgba(0,0,0,0.2);
+}
+.chat-btn:active{
+    transform:scale(0.95);
+}
+
+/* Next button */
+.next-btn{
+    background:linear-gradient(135deg,#43e97b,#38f9d7);
+    color:#004d40;
+}
+.next-btn:hover{
+    transform:translateY(-2px);
+}
+.next-btn:active{
+    transform:scale(0.96);
+}
+
+/* Fade animation */
+@keyframes fadeIn{
+    from{opacity:0;transform:translateY(10px);}
+    to{opacity:1;transform:translateY(0);}
+}
+</style>
+
+<script src="/static/js/nutrition.js"></script>
+{% endblock %}

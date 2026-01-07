@@ -1,0 +1,85 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+header {
+    background: #4CAF50;
+    color: white;
+    padding: 10px;
+}
+
+header nav a {
+    margin: 0 10px;
+    color: white;
+    text-decoration: none;
+}
+
+main {
+    padding: 20px;
+}
+
+footer {
+    background: #eee;
+    text-align: center;
+    padding: 10px;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+}
+
+form input {
+    width: 300px;
+    padding: 5px;
+    margin-bottom: 10px;
+}
+
+button {
+    padding: 5px 10px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #45a049;
+}
+
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #0d6efd;
+    padding: 10px 20px;
+}
+
+.navbar a {
+    color: white;
+    text-decoration: none;
+    margin-right: 12px;
+}
+
+.logout-btn {
+    background: red;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+.health-score-box {
+    background: #eef6ff;
+    padding: 20px;
+    border-radius: 12px;
+    margin-top: 20px;
+    text-align: center;
+}
+.score {
+    font-size: 42px;
+    font-weight: bold;
+    color: #2563eb;
+}
+.wellness {
+    font-size: 18px;
+}
