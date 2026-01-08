@@ -71,10 +71,10 @@ function saveReminder() {
     const phone = document.getElementById("phone").value;
     const msg = document.getElementById("reminderMsg");
 
-    if (!type || !time || !email || !phone) {
-        msg.style.color = "red";
-        msg.innerText = "All fields are required";
-        return;
+    if (!type || !time || !email) {
+    msg.style.color = "red";
+    msg.innerText = "Please fill reminder type, time, and email";
+    return;
     }
 
     fetch("/save-reminder", {
