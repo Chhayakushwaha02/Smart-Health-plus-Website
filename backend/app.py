@@ -174,8 +174,8 @@ def register():
         return jsonify(success=True, message="Registration successful")
 
     except Exception as e:
-     print("Error during registration:", e)  # Check the console
-     return jsonify(success=False, message=f"Error: {str(e)}")
+        print("Error during registration:", e)  # Check the console
+        return jsonify(success=False, message=f"Error: {str(e)}")
 
 
 
@@ -366,8 +366,6 @@ def google_session():
         "success": True,
         "redirect_url": redirect_url
     })
-
-
 
 # ---------------- LOGOUT ----------------
 @app.route("/logout")
@@ -780,7 +778,6 @@ def delete_reminder(reminder_id):
     return redirect(url_for("reminder_history"))
 
 
-
 @app.route("/recommendation")
 @login_required
 def recommendation():
@@ -792,7 +789,6 @@ def recommendation():
         "recommendation.html",
         health_summary=summary
     )
-
 
 
 # ---------------- CHATBOT PAGE ----------------
@@ -833,7 +829,6 @@ def profile():
     timeline_data = defaultdict(list)
 
     for row in rows:
-        # ---------------- Convert created_at to IST ----------------
         dt_obj = datetime.strptime(row["created_at"], "%Y-%m-%d %H:%M:%S")
         dt_obj = dt_obj.replace(tzinfo=pytz.UTC).astimezone(pytz.timezone("Asia/Kolkata"))
         day = dt_obj.strftime("%d %b %Y")
@@ -841,7 +836,6 @@ def profile():
         category = row["category"]
         value = row["input_value"]
 
-        # ---------------- Parse JSON values ----------------
         if category in ["fitness", "nutrition", "hydration", "sleep", "stress", "mood"]:
             try:
                 d = json.loads(value)
@@ -872,7 +866,7 @@ def profile():
                 elif category == "mood":
                     value = f"Mood: {d.get('mood', 'Not specified')} | Reason: {d.get('reason', 'Not specified')}"
             except:
-                pass  # keep value as-is if JSON parsing fails
+                pass
 
         timeline_data[day].append({
             "category": category,
@@ -880,7 +874,6 @@ def profile():
             "recommendation": row["recommendation"]
         })
 
-    # ---------------- HELPER FUNCTION TO CALCULATE SUMMARY ----------------
     def calculate_summary(data_dict):
         summary = {
             "dates": [], "sleep": [], "hydration": [], "nutrition": [],
@@ -996,7 +989,6 @@ def profile():
     cursor.close()
     conn.close()
 
-    # ---------------- RENDER TEMPLATE ----------------
     return render_template(
         "profile.html",
         name=user["name"],
@@ -1011,7 +1003,6 @@ def profile():
 
 
 # ---------------- UPDATE PROFILE ----------------
-
 @app.route("/update-profile", methods=["POST"])
 @login_required
 def update_profile():
@@ -1028,7 +1019,6 @@ def update_profile():
     if not name or not email or not mobile:
         return jsonify({"status": "error", "message": "Name, Email, and Mobile are required"}), 400
 
-    # 🔥 NORMALIZE gender
     gender_normalized = gender.lower() if gender else None
 
     password_hashed = None
@@ -1055,11 +1045,9 @@ def update_profile():
     conn.commit()
     conn.close()
 
-    # 🔥 UPDATE SESSION IMMEDIATELY
     session["name"] = name
     session["gender"] = gender_normalized
 
-    # 🔥 DECIDE DASHBOARD HERE (backend decides, not frontend)
     if session.get("role") == "admin":
         redirect_url = "/admin/dashboard"
     elif gender_normalized == "female":
@@ -1075,7 +1063,6 @@ def update_profile():
 
 
 # ---------------- PDF DOWNLOAD WITH DATE RANGE & DETAILED SUMMARY ----------------
-
 @app.route("/download-health-report")
 @login_required
 def download_health_report():
@@ -1124,7 +1111,6 @@ def download_health_report():
     stress_vals, mood_vals = [], []
     fitness_minutes, fitness_steps = 0, 0
 
-    # ---------- PROCESS DATA ----------
     for r in rows:
         date_str = r["created_at"][:10]
         value = r["input_value"]
@@ -1141,6 +1127,7 @@ def download_health_report():
         elif r["category"] == "hydration":
             try:
                 d = json.loads(value)
+                hydration_vals.append(float(d.get("level", 0)))  # <-- FIXED hydration summary
                 display_value = f"Hydration Level: {d.get('level', 'N/A')} | Reason: {d.get('reason', 'N/A')}"
             except:
                 display_value = value
@@ -1183,7 +1170,6 @@ def download_health_report():
             "recommendation": r["recommendation"] or ""
         })
 
-    # ---------- SUMMARY ----------
     avg_sleep = round(sum(sleep_vals) / len(sleep_vals), 1) if sleep_vals else 0
     total_hydration = sum(hydration_vals)
     avg_stress = round(sum(stress_vals) / len(stress_vals), 1) if stress_vals else 0
@@ -1199,7 +1185,6 @@ def download_health_report():
         f"Overall, your calculated health score for this period is {health_score}/10."
     )
 
-    # ---------- CREATE PDF ----------
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=20)
     styles = getSampleStyleSheet()
@@ -1248,10 +1233,8 @@ def reset_password():
     if not email or not password:
         return jsonify({"success": False, "message": "Email and password required"})
 
-    # Hash the password before storing
     hashed_password = generate_password_hash(password)
 
-    # Update password in DB
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET password = ? WHERE email = ?", (hashed_password, email))
