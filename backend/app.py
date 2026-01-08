@@ -1248,7 +1248,6 @@ def reset_password():
     return jsonify({"success": True, "message": "Password reset successfully"})
 
 
-
 # ---------------- SUGGESTION LOGIC ----------------
 def generate_suggestion(category, value, include_chatbot_line=True):
     import json
@@ -1265,23 +1264,31 @@ def generate_suggestion(category, value, include_chatbot_line=True):
         "and ask for detailed advice."
     ) if include_chatbot_line else ""
 
-    # Utility
+    # Utility converters
     def to_int(v):
         try:
             return int(v)
         except:
             return 0
 
+    def to_float(v):
+        try:
+            return float(v)
+        except:
+            return 0
+
+    category_lower = category.lower()
+
     # ---------------- FITNESS ----------------
-    if category == "fitness":
-        minutes = to_int(value.get("workoutMinutes") or value.get("workout_minutes") or value.get("minutes"))
-        steps = to_int(value.get("dailySteps") or value.get("daily_steps") or value.get("steps"))
-        workout_type = (value.get("workoutType") or value.get("workout_type") or value.get("type") or "").lower()
+    if category_lower == "fitness":
+        minutes = to_int(value.get("minutes") or value.get("workoutMinutes") or 0)
+        steps = to_int(value.get("steps") or value.get("dailySteps") or 0)
+        workout_type = (value.get("type") or value.get("workoutType") or "exercise").lower()
 
         if minutes < 30 and steps >= 6000:
             suggestion = (
                 f"Your daily movement is good with {steps} steps, but workout time is a bit low. "
-                f"Adding 15–20 more minutes of {workout_type or 'exercise'} can boost your fitness."
+                f"Adding 15–20 more minutes of {workout_type} can boost your fitness."
             )
         elif minutes >= 30 and steps < 6000:
             suggestion = (
@@ -1290,7 +1297,7 @@ def generate_suggestion(category, value, include_chatbot_line=True):
             )
         elif minutes < 30 and steps < 6000:
             suggestion = (
-                f"Activity levels were lower today, which is completely okay. "
+                f"Activity levels were lower today, which is okay. "
                 f"Start small by adding light workouts and more movement throughout the day."
             )
         else:
@@ -1302,41 +1309,36 @@ def generate_suggestion(category, value, include_chatbot_line=True):
         return suggestion + chatbot_line
 
     # ---------------- STRESS ----------------
-    if category == "stress":
-        level = value.get("level", "").lower()
-        reason = value.get("reason", "").lower()
+    if category_lower == "stress":
+        level = (value.get("level") or "unspecified").lower()
+        reason = (value.get("reason") or "").lower()
 
         if level == "low":
-            suggestion = (
-                "Your stress levels are well managed right now. "
-                "Continue following habits that keep your mind calm and balanced."
-            )
+            suggestion = "Your stress levels are well managed right now. Continue habits that keep your mind calm."
         elif level == "medium":
-            base = "Some stress is present, which is quite normal in daily life."
             reason_map = {
                 "workload": "Organizing tasks and taking short breaks can help you feel more in control.",
-                "exam": "A structured study plan and rest breaks can reduce mental pressure.",
-                "personal": "Giving yourself emotional space and talking to someone you trust may help.",
-                "health": "Listening to your body and maintaining healthy routines is important right now."
+                "exam": "Structured study schedules help reduce mental pressure.",
+                "personal": "Emotional space and talking to someone trusted may help.",
+                "health": "Listen to your body and maintain healthy routines."
             }
-            suggestion = f"{base} {reason_map.get(reason, 'Simple relaxation techniques can improve mental clarity.')}"
+            suggestion = f"Some stress is present, which is normal. {reason_map.get(reason, 'Simple relaxation techniques can improve mental clarity.')}"
         else:
-            base = "Stress levels are high and deserve attention."
             reason_map = {
-                "workload": "Prioritizing tasks and allowing proper rest can prevent burnout.",
-                "exam": "Balanced preparation and relaxation are key to staying focused.",
-                "personal": "Seeking support and practicing mindfulness can ease emotional strain.",
+                "workload": "Prioritize tasks and allow rest to prevent burnout.",
+                "exam": "Balanced preparation and relaxation are key.",
+                "personal": "Seek support and practice mindfulness.",
                 "health": "Professional guidance and self-care should be prioritized."
             }
-            suggestion = f"{base} {reason_map.get(reason, 'Reducing pressure and focusing on recovery is important.')}" 
-
+            suggestion = f"Stress levels are high and need attention. {reason_map.get(reason, 'Reducing pressure and focusing on recovery is important.')}"
+        
         return suggestion + chatbot_line
 
     # ---------------- SLEEP ----------------
-    if category == "sleep":
-        hours = float(value.get("hours", 0))
-        quality = value.get("quality", "").lower()
-        reason = value.get("reason", "").lower()
+    if category_lower == "sleep":
+        hours = to_float(value.get("hours", 0))
+        quality = (value.get("quality") or "").lower()
+        reason = (value.get("reason") or "").lower()
 
         if hours < 7:
             line1 = "Your sleep duration is lower than recommended."
@@ -1361,24 +1363,19 @@ def generate_suggestion(category, value, include_chatbot_line=True):
             "health": "Health-related sleep issues should not be ignored."
         }
 
-        suggestion = (
-            f"{line1} {quality_map.get(quality, '')} "
-            f"{reason_map.get(reason, 'Maintaining a calming bedtime routine is beneficial.')}"
-        )
-
+        suggestion = f"{line1} {quality_map.get(quality, '')} {reason_map.get(reason, 'Maintaining a calming bedtime routine is beneficial.')}"
         return suggestion.strip() + chatbot_line
 
     # ---------------- HYDRATION ----------------
-    if category == "hydration":
-        level = value.get("level", "").lower()
-        reason = value.get("reason", "").lower()
+    if category_lower == "hydration":
+        level = (value.get("level") or "unspecified").lower()
+        reason = (value.get("reason") or "").lower()
 
-        if level == "low":
-            base = "Your water intake is currently low."
-        elif level == "moderate":
-            base = "Your hydration level is moderate."
-        else:
-            base = "You are well hydrated today."
+        base = {
+            "low": "Your water intake is currently low.",
+            "moderate": "Your hydration level is moderate.",
+            "high": "You are well hydrated today."
+        }.get(level, "Hydration status is unspecified.")
 
         reason_map = {
             "forgot": "Setting reminders can help you stay hydrated.",
@@ -1386,320 +1383,51 @@ def generate_suggestion(category, value, include_chatbot_line=True):
             "weather": "Hot weather increases your body’s water needs."
         }
 
-        suggestion = (
-            f"{base} "
-            f"{reason_map.get(reason, 'Maintaining regular water intake supports overall health.')}"
-        )
-
+        suggestion = f"{base} {reason_map.get(reason, 'Maintaining regular water intake supports overall health.')}"
         return suggestion + chatbot_line
 
     # ---------------- NUTRITION ----------------
-    if category == "nutrition":
-        quality = value.get("quality", "").lower()
-        reason = value.get("reason", "").lower()
+    if category_lower == "nutrition":
+        quality = (value.get("quality") or "unspecified").lower()
+        reason = (value.get("reason") or "").lower()
 
         if quality == "good":
-         suggestion = (
-            "Your nutrition habits are well balanced and supportive of your health. "
-            "Continue this routine to maintain steady energy and overall well-being."
-        )
+            suggestion = "Your nutrition habits are well balanced. Continue this routine for steady energy and health."
         else:
-         base = "Your current eating pattern could be improved for better health outcomes."
-         reason_map = {
-            "junk food": "Frequent junk food can reduce energy levels, so try adding more fresh and home-cooked meals.",
-            "skipped meal": "Skipping meals may affect focus and metabolism, so regular meal timing is important.",
-            "outside food": "Reducing outside food and choosing home meals can improve nutritional balance.",
-            "lack of time": "Quick, healthy options can help you eat better even on busy days."
-        }
-
-         suggestion = (
-            f"{base} "
-            f"{reason_map.get(reason, 'Small dietary changes can make a noticeable difference over time.')}"
-        )
-
+            base = "Your current eating pattern could be improved for better health outcomes."
+            reason_map = {
+                "junk food": "Reduce junk food and add more fresh, home-cooked meals.",
+                "skipped meal": "Regular meal timing helps maintain focus and metabolism.",
+                "outside food": "Reduce outside food and choose home meals for better balance.",
+                "lack of time": "Quick healthy options can improve diet even on busy days."
+            }
+            suggestion = f"{base} {reason_map.get(reason, 'Small dietary changes can make a noticeable difference over time.')}"
         return suggestion + chatbot_line
 
-
     # ---------------- MOOD ----------------
-    if category == "mood":
-        mood = value.get("mood", "").lower()
-        reason = value.get("reason", "").lower()
+    if category_lower == "mood":
+        mood_val = (value.get("mood") or "unspecified").lower()
+        reason = (value.get("reason") or "").lower()
 
-        if mood == "happy":
-            suggestion = (
-                "You are feeling positive and emotionally balanced today. "
-                "Continue activities that support this uplifting mood."
-            )
-        elif mood in ["sad", "angry"]:
+        if mood_val == "happy":
+            suggestion = "You are feeling positive and emotionally balanced today. Continue activities that support this mood."
+        elif mood_val in ["sad", "angry"]:
             reason_map = {
                 "work stress": "Taking breaks and setting boundaries may help.",
                 "family issue": "Open communication and emotional support can ease feelings.",
-                "health problem": "Prioritizing self-care is important right now.",
+                "health problem": "Prioritize self-care right now.",
                 "others": "Mindfulness can help process emotions effectively."
             }
-            suggestion = (
-                f"Your current mood deserves care and understanding. "
-                f"{reason_map.get(reason, 'Giving yourself time can help restore balance.')}"
-            )
+            suggestion = f"Your current mood deserves care. {reason_map.get(reason, 'Giving yourself time can help restore balance.')}"
         else:
-            suggestion = (
-                "Your mood appears stable at the moment. "
-                "Staying emotionally aware helps maintain mental well-being."
-            )
-
+            suggestion = "Your mood appears stable. Staying emotionally aware helps maintain mental well-being."
         return suggestion + chatbot_line
 
     # ---------------- DEFAULT ----------------
     return "Your health journey is progressing steadily. Small consistent habits lead to big improvements." + chatbot_line
 
 
-@app.route("/save-health-data", methods=["POST"])
-@login_required
-def save_health_data_route():
-    import json
-    from datetime import datetime
-
-    data = request.get_json()
-    if not data:
-        return jsonify({"success": False, "error": "No data received"}), 400
-
-    category = data.get("category")
-    value = data.get("value")
-
-    if not category or value is None:
-        return jsonify({"success": False, "error": "Category or value missing"}), 400
-
-    # Ensure value is a dict
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except:
-            value = {"raw": value}
-
-    # ---------------- SAFE CONVERSIONS ----------------
-    def safe_int(val):
-        try:
-            return int(val)
-        except (TypeError, ValueError):
-            return 0
-
-    def safe_float(val):
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return 0
-
-    category_lower = category.lower()
-
-    # ----------- FITNESS -----------
-    if category_lower == "fitness":
-        # Map all possible frontend keys to backend standard keys
-        value["minutes"] = safe_int(value.get("minutes") or value.get("workoutMinutes") or 0)
-        value["steps"] = safe_int(value.get("steps") or value.get("dailySteps") or 0)
-        value["type"] = value.get("type") or value.get("workoutType") or "Unspecified"
-
-    # ----------- SLEEP -----------
-    elif category_lower == "sleep":
-        value["hours"] = safe_float(value.get("hours") or 0)
-        value["quality"] = value.get("quality") or "Unspecified"
-        value["reason"] = value.get("reason") or "Not specified"
-
-    # ----------- HYDRATION -----------
-    elif category_lower == "hydration":
-        value["level"] = value.get("level") or "Unspecified"
-        value["reason"] = value.get("reason") or "Not specified"
-
-    # ----------- NUTRITION -----------
-    elif category_lower == "nutrition":
-        value["quality"] = value.get("quality") or "Unspecified"
-        value["reason"] = value.get("reason") or "Not specified"
-
-    # ----------- STRESS -----------
-    elif category_lower == "stress":
-        value["level"] = value.get("level") or "Unspecified"
-        value["reason"] = value.get("reason") or "Not specified"
-
-    # ----------- MOOD -----------
-    elif category_lower == "mood":
-        value["mood"] = value.get("mood") or "Unspecified"
-        value["reason"] = value.get("reason") or "Not specified"
-
-    # Generate suggestion without chatbot line
-    suggestion = generate_suggestion(category, value, include_chatbot_line=False)
-
-    # ---------------- SAVE TO DB ----------------
-    user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"success": False, "error": "User not logged in"}), 401
-
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO health_data 
-            (user_id, category, input_value, recommendation, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            user_id,
-            category,
-            json.dumps(value),  # store normalized JSON
-            suggestion,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ))
-        conn.commit()
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-    # Return suggestion for UI
-    suggestion_ui = generate_suggestion(category, value, include_chatbot_line=True)
-    return jsonify({"success": True, "suggestion": suggestion_ui})
-
-
-@app.route("/generate-recommendation")
-@login_required
-def generate_recommendation():
-    import json
-
-    user_id = session["user_id"]
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT category, input_value
-        FROM health_data
-        WHERE user_id = ?
-        ORDER BY created_at DESC
-    """, (user_id,))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    if not rows:
-        return jsonify({
-            "recommendation": "No health data found. Please save your data first.",
-            "health_summary": ""
-        })
-
-    # Latest data per category
-    latest_data = {}
-    for row in rows:
-        if row["category"] not in latest_data:
-            try:
-                latest_data[row["category"]] = json.loads(row["input_value"])
-            except:
-                latest_data[row["category"]] = {}
-
-    rec_messages = []
-    summary_lines = []
-
-    def safe_int(val):
-        try:
-            return int(val)
-        except (TypeError, ValueError):
-            return 0
-
-    def safe_float(val):
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return 0
-
-    # ---------------- FITNESS ----------------
-    fitness = latest_data.get("fitness", {})
-    minutes = safe_int(fitness.get("minutes"))
-    steps = safe_int(fitness.get("steps"))
-    workout_type = fitness.get("type") or "Unspecified"
-
-    summary_lines.append(f"Fitness: {minutes} min ({workout_type}), Steps: {steps}")
-    if minutes < 30 and steps < 6000:
-        rec_messages.append("Workout duration and steps are below recommended levels.")
-    elif minutes < 30:
-        rec_messages.append("Workout duration is low. Increase activity time.")
-    elif steps < 6000:
-        rec_messages.append("Daily steps are low. Try to walk more.")
-    else:
-        rec_messages.append("Excellent fitness routine.")
-
-    # ---------------- OTHER CATEGORIES ----------------
-    for cat in ["sleep", "hydration", "nutrition", "stress", "mood"]:
-        data = latest_data.get(cat, {})
-        if not data:
-            continue
-
-        if cat == "sleep":
-            hours = safe_float(data.get("hours"))
-            quality = data.get("quality") or "Unspecified"
-            reason = data.get("reason") or "Not specified"
-            summary_lines.append(f"Sleep: {hours} hours, Quality: {quality}, Reason: {reason}")
-            if hours < 6:
-                rec_messages.append(f"Sleep is very low ({hours}h). Focus on stress management and better sleep hygiene.")
-            elif hours < 7:
-                rec_messages.append(f"Sleep duration slightly low ({hours}h). Try reaching 7–8 hours.")
-            else:
-                rec_messages.append("Sleep duration is healthy.")
-
-        elif cat == "hydration":
-            level = data.get("level") or "Unspecified"
-            reason = data.get("reason") or "Not specified"
-            summary_lines.append(f"Hydration Level: {level}, Reason: {reason}")
-            if level.lower() in ["low", "moderate"]:
-                rec_messages.append(f"Hydration is {level}. Increase water intake to 7–8 glasses daily.")
-            elif level.lower() == "unspecified":
-                rec_messages.append("Hydration level not specified.")
-            else:
-                rec_messages.append("Hydration level is good.")
-
-        elif cat == "nutrition":
-            quality = data.get("quality") or "Unspecified"
-            reason = data.get("reason") or "Not specified"
-            summary_lines.append(f"Nutrition Quality: {quality}, Reason: {reason}")
-            if quality.lower() in ["poor", "average"]:
-                rec_messages.append("Nutrition needs improvement. Reduce junk food and eat balanced meals.")
-            elif quality.lower() == "unspecified":
-                rec_messages.append("Nutrition quality not specified.")
-            else:
-                rec_messages.append("Nutrition habits are healthy.")
-
-        elif cat == "stress":
-            level = data.get("level") or "Unspecified"
-            reason = data.get("reason") or "Not specified"
-            summary_lines.append(f"Stress Level: {level}, Reason: {reason}")
-            if level.lower() == "high":
-                rec_messages.append("High stress detected. Try meditation, breaks, or talking to someone.")
-            elif level.lower() == "medium":
-                rec_messages.append("Moderate stress. Take regular breaks.")
-            elif level.lower() == "unspecified":
-                rec_messages.append("Stress level not specified.")
-            else:
-                rec_messages.append("Stress levels are low.")
-
-        elif cat == "mood":
-            mood_val = data.get("mood") or "Unspecified"
-            reason = data.get("reason") or "Not specified"
-            summary_lines.append(f"Mood: {mood_val}, Reason: {reason}")
-            if mood_val.lower() in ["sad", "angry"]:
-                rec_messages.append("Mood seems low. Consider mindfulness or chatting with AI assistant.")
-            elif mood_val.lower() == "unspecified":
-                rec_messages.append("Mood not specified.")
-            else:
-                rec_messages.append("Mood is positive.")
-
-    final_recommendation = (
-        " ".join(rec_messages) +
-        " You can get personalized health guidance instantly. Click the button below to receive recommendations from our chatbot!"
-    )
-    health_summary = "Here is a summary of your recent health data:\n" + "\n".join(summary_lines)
-
-    return jsonify({
-        "recommendation": final_recommendation,
-        "health_summary": health_summary
-    })
-
-
-
-# ----------------health_score----------------
+# ---------------- HEALTH SCORE ----------------
 def calculate_health_score(user_id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1728,13 +1456,13 @@ def calculate_health_score(user_id):
 
     total_score = 0
     tips = []
-    module_score = 100 / 6
+    module_score = 100 / 6  # 6 modules
 
     # 💤 Sleep
     sleep = latest.get("sleep")
     if isinstance(sleep, dict):
-        hours = int(sleep.get("hours", 0))
-        quality = sleep.get("quality", "").lower()
+        hours = float(sleep.get("hours", 0))
+        quality = (sleep.get("quality") or "").lower()
         if 7 <= hours <= 8 and quality == "good":
             total_score += module_score
         elif hours >= 6:
@@ -1748,7 +1476,7 @@ def calculate_health_score(user_id):
     # 💧 Hydration
     hydration = latest.get("hydration")
     if isinstance(hydration, dict):
-        level = hydration.get("level", "").lower()
+        level = (hydration.get("level") or "").lower()
         if level == "high":
             total_score += module_score
         elif level == "moderate":
@@ -1762,7 +1490,7 @@ def calculate_health_score(user_id):
     # 🥗 Nutrition
     nutrition = latest.get("nutrition")
     if isinstance(nutrition, dict):
-        quality = nutrition.get("quality", "").lower()
+        quality = (nutrition.get("quality") or "").lower()
         if quality == "good":
             total_score += module_score
         else:
@@ -1789,7 +1517,7 @@ def calculate_health_score(user_id):
     # 😟 Stress
     stress = latest.get("stress")
     if isinstance(stress, dict):
-        level = stress.get("level", "").lower()
+        level = (stress.get("level") or "").lower()
         if level == "low":
             total_score += module_score
         elif level == "medium":
@@ -1803,7 +1531,7 @@ def calculate_health_score(user_id):
     # 😊 Mood
     mood = latest.get("mood")
     if isinstance(mood, dict):
-        mood_val = mood.get("mood", "").lower()
+        mood_val = (mood.get("mood") or "").lower()
         if mood_val == "happy":
             total_score += module_score
         else:
@@ -1824,6 +1552,7 @@ def calculate_health_score(user_id):
     return score, wellness, " ".join(tips)
 
 
+# ---------------- AI TIP ----------------
 def generate_ai_tip(score, wellness, latest_data):
     """
     Generates AI-style tips (can be replaced with real AI API later)
@@ -1857,47 +1586,7 @@ def generate_ai_tip(score, wellness, latest_data):
     )
 
 
-
-def get_chatbot_recommendation(health_summary):
-    url = "https://api.chatbase.co/api/v1/chat"
-
-    headers = {
-        "Authorization": "Bearer YOUR_CHATBOT_API_KEY",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "chatbotId": "YOUR_CHATBOT_ID",
-        "messages": [
-            {
-                "role": "user",
-                "content": f"""
-You are Smart Health Plus AI Assistant.
-Analyze the following health data and give personalized recommendations.
-Include meditation or exercise only if needed.
-
-Health Data:
-{health_summary}
-"""
-            }
-        ]
-    }
-
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-
-        if response.status_code != 200:
-            return "Chatbot service is currently unavailable."
-
-        data = response.json()
-        return data["responses"][0]["message"]["content"]
-
-    except Exception as e:
-        print("Chatbot Error:", e)
-        return "Unable to generate chatbot recommendation at the moment."
-
-
-
+# ---------------- WEEKLY SUMMARY ----------------
 def generate_weekly_summary(rows):
     if not rows:
         return "No sufficient data available for this week."
@@ -1906,40 +1595,39 @@ def generate_weekly_summary(rows):
     mood_count = {}
 
     for r in rows:
-        cat = r["category"]
+        cat = r["category"].lower()
         val = r["input_value"]
 
-        if cat == "sleep":
-            sleep.append(int(val))
-        elif cat == "hydration":
-            hydration.append(int(val))
-        elif cat == "stress":
-            stress.append(val)
-        elif cat == "fitness":
-            try:
-                data = json.loads(val)
-                fitness.append(data.get("minutes", 0))
-            except:
-                pass
-        elif cat == "mood":
-            mood_count[val] = mood_count.get(val, 0) + 1
+        try:
+            if cat == "sleep":
+                data = json.loads(val) if isinstance(val, str) else val
+                sleep.append(float(data.get("hours", 0)))
+            elif cat == "hydration":
+                data = json.loads(val) if isinstance(val, str) else val
+                hydration.append(float(data.get("level", 0)))
+            elif cat == "stress":
+                data = json.loads(val) if isinstance(val, str) else val
+                stress.append(data.get("level", "unspecified").lower())
+            elif cat == "fitness":
+                data = json.loads(val) if isinstance(val, str) else val
+                fitness.append(int(data.get("minutes", 0)))
+            elif cat == "mood":
+                data = json.loads(val) if isinstance(val, str) else val
+                mood_val = data.get("mood", "unspecified").lower()
+                mood_count[mood_val] = mood_count.get(mood_val, 0) + 1
+        except:
+            continue
 
     msg = []
 
-    if sleep and sum(sleep)/len(sleep) < 7:
-        msg.append("Your sleep duration was below recommended levels.")
-    else:
-        msg.append("Your sleep routine was mostly consistent.")
+    avg_sleep = sum(sleep)/len(sleep) if sleep else 0
+    msg.append("Sleep was below recommended levels." if avg_sleep < 7 else "Sleep routine was mostly consistent.")
 
-    if hydration and sum(hydration)/len(hydration) < 7:
-        msg.append("Hydration levels were low on several days.")
-    else:
-        msg.append("You maintained good hydration habits.")
+    avg_hydration = sum(hydration)/len(hydration) if hydration else 0
+    msg.append("Hydration levels were low on several days." if avg_hydration < 7 else "Good hydration habits maintained.")
 
-    if fitness and sum(fitness)/len(fitness) < 30:
-        msg.append("Physical activity needs improvement.")
-    else:
-        msg.append("Your fitness activity was good this week.")
+    avg_fitness = sum(fitness)/len(fitness) if fitness else 0
+    msg.append("Physical activity needs improvement." if avg_fitness < 30 else "Fitness activity was good this week.")
 
     if stress.count("high") > 2:
         msg.append("Stress levels were frequently high.")
@@ -1951,6 +1639,7 @@ def generate_weekly_summary(rows):
     return " ".join(msg)
 
 
+# ---------------- MONTHLY SUMMARY ----------------
 def generate_monthly_summary(rows):
     if not rows:
         return "No sufficient data available for this month."
@@ -1958,37 +1647,34 @@ def generate_monthly_summary(rows):
     sleep, hydration, fitness = [], [], []
 
     for r in rows:
-        if r["category"] == "sleep":
-            sleep.append(int(r["input_value"]))
-        elif r["category"] == "hydration":
-            hydration.append(int(r["input_value"]))
-        elif r["category"] == "fitness":
-            try:
-                data = json.loads(r["input_value"])
-                fitness.append(data.get("minutes", 0))
-            except:
-                pass
+        cat = r["category"].lower()
+        val = r["input_value"]
+        try:
+            data = json.loads(val) if isinstance(val, str) else val
+            if cat == "sleep":
+                sleep.append(float(data.get("hours", 0)))
+            elif cat == "hydration":
+                hydration.append(float(data.get("level", 0)))
+            elif cat == "fitness":
+                fitness.append(int(data.get("minutes", 0)))
+        except:
+            continue
 
     msg = []
 
-    if sleep and sum(sleep)/len(sleep) >= 7:
-        msg.append("Sleep consistency improved over the month.")
-    else:
-        msg.append("Sleep routine needs improvement.")
+    avg_sleep = sum(sleep)/len(sleep) if sleep else 0
+    msg.append("Sleep consistency improved." if avg_sleep >= 7 else "Sleep routine needs improvement.")
 
-    if hydration and sum(hydration)/len(hydration) >= 8:
-        msg.append("Hydration habits were well maintained.")
-    else:
-        msg.append("Hydration was inconsistent.")
+    avg_hydration = sum(hydration)/len(hydration) if hydration else 0
+    msg.append("Hydration habits were well maintained." if avg_hydration >= 8 else "Hydration was inconsistent.")
 
-    if fitness and sum(fitness)/len(fitness) >= 30:
-        msg.append("Physical activity level was satisfactory.")
-    else:
-        msg.append("Physical activity was below recommended levels.")
+    avg_fitness = sum(fitness)/len(fitness) if fitness else 0
+    msg.append("Physical activity level was satisfactory." if avg_fitness >= 30 else "Physical activity was below recommended levels.")
 
     msg.append("Overall health trends show gradual progress.")
 
     return " ".join(msg)
+
 
 
 # ----------------submit-feedback----------------
@@ -2550,10 +2236,3 @@ def period_charts():
 # ---------------- RUN APP ----------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
-
-
-
-
-
-
