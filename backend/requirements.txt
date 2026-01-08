@@ -1,4 +1,11 @@
-flask
+Flask
 gunicorn
-werkzeug
-reportlab
+Werkzeug
+ReportLab
+FPDF
+pytz
+Flask-SQLAlchemy
+Flask-Dance
+python-dotenv
+APScheduler
+Twilio
