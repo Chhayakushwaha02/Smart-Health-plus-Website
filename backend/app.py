@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 from collections import defaultdict
 import pytz
+from pytz import timezone
 from database import get_db_connection
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.platypus.tables import Table as RLTable
@@ -88,10 +89,13 @@ class User(db.Model):
     is_active = db.Column(db.Boolean, default=True)
 
 
+def get_current_ist_time():
+    """
+    Returns the current datetime in IST (Asia/Kolkata timezone)
+    """
+    ist = pytz.timezone("Asia/Kolkata")
+    return datetime.now(ist)
 
-# Get current date-time in IST
-ist = pytz.timezone("Asia/Kolkata")
-created_at = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
 
 # ---------------- LOGIN REQUIRED ----------------
 def login_required(f):
@@ -543,6 +547,9 @@ def send_sms(to_phone, message):
         print("❌ Twilio SMS error:", e)
         return False
 
+scheduler = BackgroundScheduler(timezone=timezone("Asia/Kolkata"))  # <- important!
+scheduler.start()
+
 # ---------------- Daily Reminder ----------------
 def send_daily_reminder():
     conn = get_db_connection()
@@ -567,7 +574,47 @@ def send_daily_reminder():
         if email:
             send_email(email, "SmartHealthPlus Reminder", message)
 
+# ---------------- Add reminder jobs dynamically ----------------
+def add_reminder_job(reminder_id, reminder_type, reminder_time):
+    hour, minute = map(int, reminder_time.split(":"))
 
+    def reminder_job(rem_id=reminder_id, rtype=reminder_type):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT r.reminder_email, r.reminder_phone, u.name
+            FROM reminders r
+            JOIN users u ON u.id = r.user_id
+            WHERE r.id = ?
+        """, (rem_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return
+
+        email = row["reminder_email"]
+        phone = row["reminder_phone"]
+        name = row["name"]
+
+        message = f"⏰ Hi {name}, this is your {rtype} reminder 🌸"
+
+        if email:
+            send_email(email, "SmartHealthPlus Reminder", message)
+        if phone:
+            send_sms(phone, message)
+
+    job_id = f"reminder_{reminder_id}"
+    scheduler.add_job(
+        reminder_job,
+        trigger="cron",
+        hour=hour,
+        minute=minute,
+        id=job_id,
+        replace_existing=True
+    )
+    
 # ---------------- Scheduler ----------------
 scheduler = BackgroundScheduler()
 scheduler.add_job(send_daily_reminder, "interval", hours=24)  # use minutes=1 for testing
@@ -772,8 +819,8 @@ def profile():
     )
     user = cursor.fetchone()
 
-    # ----------------- TIMELINE DATA -----------------
-    seven_days_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    # ----------------- TIMELINE DATA (LAST 7 DAYS) -----------------
+    seven_days_ago = (get_current_ist_time() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
 
     cursor.execute("""
         SELECT category, input_value, recommendation, created_at
@@ -781,86 +828,51 @@ def profile():
         WHERE user_id=? AND created_at >= ?
         ORDER BY created_at DESC
     """, (user_id, seven_days_ago))
-
     rows = cursor.fetchall()
 
     timeline_data = defaultdict(list)
 
     for row in rows:
-        day = datetime.strptime(
-            row["created_at"], "%Y-%m-%d %H:%M:%S"
-        ).strftime("%d %b %Y")
+        # ---------------- Convert created_at to IST ----------------
+        dt_obj = datetime.strptime(row["created_at"], "%Y-%m-%d %H:%M:%S")
+        dt_obj = dt_obj.replace(tzinfo=pytz.UTC).astimezone(pytz.timezone("Asia/Kolkata"))
+        day = dt_obj.strftime("%d %b %Y")
 
         category = row["category"]
         value = row["input_value"]
 
-        # ---------------- FITNESS ----------------
-        if category == "fitness":
+        # ---------------- Parse JSON values ----------------
+        if category in ["fitness", "nutrition", "hydration", "sleep", "stress", "mood"]:
             try:
                 d = json.loads(value)
-                value = (
-                    f"Workout Minutes: {d.get('minutes', 0)} mins | "
-                    f"Workout Type: {d.get('type', 'Not specified')} | "
-                    f"Daily Steps: {d.get('steps', 0)} steps"
-                )
+                if category == "fitness":
+                    value = (
+                        f"Workout Minutes: {d.get('minutes', 0)} mins | "
+                        f"Workout Type: {d.get('type', 'Not specified')} | "
+                        f"Daily Steps: {d.get('steps', 0)} steps"
+                    )
+                elif category == "nutrition":
+                    value = (
+                        f"Nutrition Quality: {d.get('quality', 'Not specified')} | "
+                        f"Reason: {d.get('reason', 'Not specified')}"
+                    )
+                elif category == "hydration":
+                    value = (
+                        f"Hydration Level: {d.get('level', 'Not specified')} | "
+                        f"Reason: {d.get('reason', 'Not specified')}"
+                    )
+                elif category == "sleep":
+                    value = (
+                        f"Sleep Duration: {d.get('hours', 0)} hours | "
+                        f"Quality: {d.get('quality', 'Not specified')} | "
+                        f"Reason: {d.get('reason', 'Not specified')}"
+                    )
+                elif category == "stress":
+                    value = f"Stress Level: {d.get('level', 'Not specified')} | Reason: {d.get('reason', 'Not specified')}"
+                elif category == "mood":
+                    value = f"Mood: {d.get('mood', 'Not specified')} | Reason: {d.get('reason', 'Not specified')}"
             except:
-                pass
-
-        # ---------------- NUTRITION ----------------
-        elif category == "nutrition":
-            try:
-                d = json.loads(value)
-                value = (
-                    f"Nutrition Quality: {d.get('quality', 'Not specified')} | "
-                    f"Reason: {d.get('reason', 'Not specified')}"
-                )
-            except:
-                pass
-
-        # ---------------- HYDRATION ----------------
-        elif category == "hydration":
-            try:
-                d = json.loads(value)
-                value = (
-                    f"Hydration Level: {d.get('level', 'Not specified')} | "
-                    f"Reason: {d.get('reason', 'Not specified')}"
-                )
-            except:
-                pass
-
-        # ---------------- SLEEP ----------------
-        elif category == "sleep":
-            try:
-                d = json.loads(value)
-                value = (
-                    f"Sleep Duration: {d.get('hours', 0)} hours | "
-                    f"Quality: {d.get('quality', 'Not specified')} | "
-                    f"Reason: {d.get('reason', 'Not specified')}"
-                )
-            except:
-                pass
-
-        # ---------------- STRESS ----------------
-        elif category == "stress":
-            try:
-                d = json.loads(value)
-                value = (
-                    f"Stress Level: {d.get('level', 'Not specified')} | "
-                    f"Reason: {d.get('reason', 'Not specified')}"
-                )
-            except:
-                pass
-
-        # ---------------- MOOD ----------------
-        elif category == "mood":
-            try:
-                d = json.loads(value)
-                value = (
-                    f"Mood: {d.get('mood', 'Not specified')} | "
-                    f"Reason: {d.get('reason', 'Not specified')}"
-                )
-            except:
-                pass
+                pass  # keep value as-is if JSON parsing fails
 
         timeline_data[day].append({
             "category": category,
@@ -868,8 +880,7 @@ def profile():
             "recommendation": row["recommendation"]
         })
 
-
-    # ---------------- HELPER FUNCTION ----------------
+    # ---------------- HELPER FUNCTION TO CALCULATE SUMMARY ----------------
     def calculate_summary(data_dict):
         summary = {
             "dates": [], "sleep": [], "hydration": [], "nutrition": [],
@@ -888,7 +899,7 @@ def profile():
             stress_avg = mean(v["stress"]) if v["stress"] else 0
             mood_avg = mean(v["mood"]) if v["mood"] else 0
 
-            health_score = round((sleep_avg*10 + hydration_sum*5 + nutrition_avg*10 + 
+            health_score = round((sleep_avg*10 + hydration_sum*5 + nutrition_avg*10 +
                                   fitness_minutes_sum*0.5 + (5-stress_avg)*10 + mood_avg*10) / 6, 1)
 
             summary["sleep"].append(sleep_avg)
@@ -919,15 +930,20 @@ def profile():
         "stress": [], "mood": []
     })
 
+    thirty_days_ago = (get_current_ist_time() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+
     cursor.execute("""
         SELECT category, input_value, created_at
         FROM health_data
-        WHERE user_id=? AND DATE(created_at) >= DATE('now','-7 day')
-    """, (user_id,))
+        WHERE user_id=? AND created_at >= ?
+    """, (user_id, seven_days_ago))
     weekly_rows = cursor.fetchall()
 
     for r in weekly_rows:
-        day = datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S").strftime("%d %b")
+        dt_obj = datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S")
+        dt_obj = dt_obj.replace(tzinfo=pytz.UTC).astimezone(pytz.timezone("Asia/Kolkata"))
+        day = dt_obj.strftime("%d %b")
+
         if r["category"] == "fitness":
             try:
                 d = json.loads(r["input_value"])
@@ -953,12 +969,15 @@ def profile():
     cursor.execute("""
         SELECT category, input_value, created_at
         FROM health_data
-        WHERE user_id=? AND DATE(created_at) >= DATE('now','-30 day')
-    """, (user_id,))
+        WHERE user_id=? AND created_at >= ?
+    """, (user_id, thirty_days_ago))
     monthly_rows = cursor.fetchall()
 
     for r in monthly_rows:
-        day = datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S").strftime("%d %b")
+        dt_obj = datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S")
+        dt_obj = dt_obj.replace(tzinfo=pytz.UTC).astimezone(pytz.timezone("Asia/Kolkata"))
+        day = dt_obj.strftime("%d %b")
+
         if r["category"] == "fitness":
             try:
                 d = json.loads(r["input_value"])
@@ -982,14 +1001,13 @@ def profile():
         "profile.html",
         name=user["name"],
         email=user["email"],
-        mobile=user["mobile"],  # ✅ now mobile is passed to template
+        mobile=user["mobile"],
         age=user["age"],
         gender=user["gender"],
-        timeline_data=timeline_data,  # now a dict grouped by date
+        timeline_data=timeline_data,
         weekly_summary=weekly_summary if weekly_summary["dates"] else None,
         monthly_summary=monthly_summary if monthly_summary["dates"] else None
     )
-
 
 
 # ---------------- UPDATE PROFILE ----------------
@@ -2549,6 +2567,10 @@ def period_charts():
 # ---------------- RUN APP ----------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
+
+
+
 
 
 
