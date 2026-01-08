@@ -2543,11 +2543,8 @@ def period_charts():
 # ---------------- RUN APP ----------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-<<<<<<< HEAD
 
 
-=======
->>>>>>> f03b9dc4d76eaa874e158a2563423d5f2b6bae14
 
 
 
