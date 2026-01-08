@@ -87,6 +87,12 @@ class User(db.Model):
     auth_provider = db.Column(db.String(50), default="google")
     is_active = db.Column(db.Boolean, default=True)
 
+
+
+# Get current date-time in IST
+ist = pytz.timezone("Asia/Kolkata")
+created_at = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S")
+
 # ---------------- LOGIN REQUIRED ----------------
 def login_required(f):
     @wraps(f)
