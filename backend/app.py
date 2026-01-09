@@ -4,6 +4,7 @@ import os, json
 from functools import wraps
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
+from apscheduler.triggers.date import DateTrigger
 from collections import defaultdict
 import pytz
 from database import get_db_connection
@@ -564,6 +565,7 @@ scheduler.start()
 print("🟢 Scheduler started.")
 
 
+
 @app.route("/save-reminder", methods=["POST"])
 @login_required
 def save_reminder():
@@ -571,15 +573,15 @@ def save_reminder():
 
     reminder_type = data.get("type")
     reminder_time = data.get("time")
-    reminder_email = data.get("email")      # 🔥 IMPORTANT
-    reminder_phone = data.get("phone")      # 🔥 IMPORTANT
+    reminder_email = data.get("email")
+    reminder_phone = data.get("phone")
 
     if not reminder_type or not reminder_time:
         return jsonify({"message": "Reminder type and time are required"}), 400
 
     user_id = session["user_id"]
 
-    # ---------------- Save reminder properly ----------------
+    # ---------------- Save reminder in DB ----------------
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -605,20 +607,25 @@ def save_reminder():
     cursor.close()
     conn.close()
 
+    # ---------------- Convert reminder_time to datetime ----------------
     hour, minute = map(int, reminder_time.split(":"))
+    now = datetime.now(ZoneInfo("Asia/Kolkata"))  # IST timezone
+    reminder_dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+    # If time already passed today, schedule for tomorrow
+    if reminder_dt < now:
+        reminder_dt += timedelta(days=1)
 
     # ---------------- Reminder Job ----------------
     def reminder_job(rem_id=reminder_id, rtype=reminder_type):
         conn = get_db_connection()
         cursor = conn.cursor()
-
         cursor.execute("""
             SELECT r.reminder_email, r.reminder_phone, u.name
             FROM reminders r
             JOIN users u ON u.id = r.user_id
             WHERE r.id = ?
         """, (rem_id,))
-
         row = cursor.fetchone()
         cursor.close()
         conn.close()
@@ -633,22 +640,17 @@ def save_reminder():
 
         message = f"⏰ Hi {name}, this is your {rtype} reminder 🌸"
 
-        # ---------------- Email (ALWAYS WORKS) ----------------
         if email:
             send_email(email, "SmartHealthPlus Reminder", message)
-
-        # ---------------- SMS (OPTIONAL / TRIAL LIMIT) ----------------
         if phone:
             send_sms(phone, message)
 
-    # ---------------- Unique Job ID ----------------
+    # ---------------- Schedule Job with DateTrigger ----------------
     job_id = f"reminder_{reminder_id}"
 
     scheduler.add_job(
         reminder_job,
-        trigger="cron",
-        hour=hour,
-        minute=minute,
+        trigger=DateTrigger(run_date=reminder_dt),
         id=job_id,
         replace_existing=True
     )
