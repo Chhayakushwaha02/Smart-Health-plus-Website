@@ -734,8 +734,6 @@ def recommendation():
         health_summary=summary
     )
 
-
-
 # ---------------- CHATBOT PAGE ----------------
 @app.route("/chatbot")
 @login_required
