@@ -68,6 +68,57 @@
         .container {
             padding: 20px;
         }
+
+        /* ===== MOBILE FRIENDLY CHANGES ===== */
+        @media screen and (max-width: 768px) {
+            nav {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .nav-left, .nav-right {
+                display: flex;
+                flex-direction: column;
+                width: 100%;
+            }
+            .nav-left a, .nav-right a {
+                margin: 5px 0;
+            }
+            .dark-toggle, .logout-btn {
+                margin: 5px 0;
+            }
+            .container {
+                padding: 15px 10px;
+            }
+        }
+
+        /* Make any grids and cards flexible if used in child pages */
+        @media screen and (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr !important; /* stack cards vertically */
+                gap: 15px !important;
+            }
+            .card {
+                padding: 18px !important;
+                font-size: 16px !important;
+            }
+        }
+
+        /* Admin dashboard chart adjustments */
+        @media screen and (max-width: 768px) {
+            .admin-cards {
+                grid-template-columns: 1fr !important;
+            }
+            .analytics {
+                grid-template-columns: 1fr !important;
+            }
+            .chart-box {
+                height: auto !important;
+            }
+            .small-chart canvas {
+                max-width: 100% !important;
+            }
+        }
+
     </style>
 </head>
 
@@ -134,4 +185,3 @@
 
 </body>
 </html>
-
