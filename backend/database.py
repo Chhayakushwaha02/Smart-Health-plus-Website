@@ -2,7 +2,7 @@ import sqlite3
 import os
 
 # Use Render persistent disk (or fallback locally)
-DB_PATH = "/var/data/smarthealthplus.db"
+DB_PATH = os.environ.get("DB_PATH") or os.path.join(os.path.dirname(__file__), "smarthealthplus.db")
 
 def get_db_connection():
     try:
