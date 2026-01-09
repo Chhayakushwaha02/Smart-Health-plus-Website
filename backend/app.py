@@ -727,12 +727,21 @@ def delete_reminder(reminder_id):
 def recommendation():
     user_id = session["user_id"]
 
-    summary = get_user_health_summary(user_id)
+    try:
+        # Only generate summary if function exists and returns something
+        if 'get_user_health_summary' in globals():
+            summary = get_user_health_summary(user_id)
+        else:
+            summary = None
+    except Exception as e:
+        summary = None
+        print("Error generating health summary:", e)  # Logs to console
 
     return render_template(
         "recommendation.html",
         health_summary=summary
     )
+
 
 # ---------------- CHATBOT PAGE ----------------
 @app.route("/chatbot")
