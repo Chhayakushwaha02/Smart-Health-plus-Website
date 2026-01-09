@@ -29,8 +29,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from utils.femalecycle import get_cycle_phase, generate_female_health_summary
 import sqlite3
 from dotenv import load_dotenv
-from apscheduler.schedulers.background import BackgroundScheduler
-import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask_dance.contrib.google import make_google_blueprint, google
@@ -53,10 +51,6 @@ def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
-
-# ---------------- Scheduler ----------------
-scheduler = BackgroundScheduler()
-scheduler.start()
 
 
 # ---------------- PATH SETUP ----------------
@@ -567,7 +561,7 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(send_daily_reminder, "interval", hours=24)  # use minutes=1 for testing
 scheduler.start()
 
-print("🟢 Scheduler started. Press Ctrl+C to quit.")
+print("🟢 Scheduler started.")
 
 
 @app.route("/save-reminder", methods=["POST"])
