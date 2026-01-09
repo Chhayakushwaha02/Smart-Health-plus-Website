@@ -68,7 +68,11 @@ Health Data:
 # 3️⃣ Save recommendation
 def save_recommendation(user_id, recommendation):
     conn = get_db_connection()
+    if not conn:
+        return "Health data not available right now. Please try again later."
+
     cursor = conn.cursor()
+
 
     cursor.execute("""
         INSERT INTO health_data (user_id, category, recommendation)
