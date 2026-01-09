@@ -4,7 +4,6 @@ import os, json
 from functools import wraps
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
-from apscheduler.triggers.date import DateTrigger
 from collections import defaultdict
 import pytz
 from database import get_db_connection
@@ -35,8 +34,6 @@ from email.mime.multipart import MIMEMultipart
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_sqlalchemy import SQLAlchemy
 from urllib.parse import urlencode
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
 # ---------------- Load .env ----------------
 load_dotenv()  # This loads your .env file into environment variables
@@ -44,6 +41,16 @@ load_dotenv()  # This loads your .env file into environment variables
 # ---------------- Load environment variables ----------------
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+
+
+# ---------------- SQLite Connection ----------------
+DB_PATH = os.path.join(os.path.dirname(__file__), "smarthealthplus.db")
+
+def get_db_connection():
+    """Connect to local SQLite DB"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 # ---------------- PATH SETUP ----------------
@@ -60,40 +67,8 @@ app = Flask(
 app.secret_key = os.environ.get("SMART_HEALTH_PLUS_SECRET_KEY")
 
 
-# ---------------- DATABASE ----------------
-DB_TYPE = os.getenv("DB_TYPE", "sqlite")  # sqlite or postgres
-
-if DB_TYPE == "postgres":
-    POSTGRES_USER = os.getenv("POSTGRES_USER")
-    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-    POSTGRES_HOST = os.getenv("POSTGRES_HOST")
-    POSTGRES_DB = os.getenv("POSTGRES_DB")
-
-    DB_URI = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}/{POSTGRES_DB}"
-else:
-    DB_URI = "sqlite:///smarthealthplus.db"
-
-app.config["SQLALCHEMY_DATABASE_URI"] = DB_URI
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///smarthealthplus.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-db = SQLAlchemy(app)
-
-# ---------------- GET DB CONNECTION ----------------
-def get_db_connection():
-    if DB_TYPE == "postgres":
-        conn = psycopg2.connect(
-            host=POSTGRES_HOST,
-            dbname=POSTGRES_DB,
-            user=POSTGRES_USER,
-            password=POSTGRES_PASSWORD,
-            cursor_factory=RealDictCursor
-        )
-    else:
-        import sqlite3
-        DB_PATH = os.path.join(os.path.dirname(__file__), "smarthealthplus.db")
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-    return conn
 
 # ---------------- Database ----------------
 db = SQLAlchemy(app)
@@ -588,70 +563,6 @@ scheduler.start()
 
 print("🟢 Scheduler started.")
 
-from apscheduler.schedulers.background import BackgroundScheduler
-
-scheduler = BackgroundScheduler()
-scheduler.start()
-
-def load_existing_reminders():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, reminder_type, reminder_time
-        FROM reminders
-    """)
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    for r in rows:
-        rem_id = r["id"] if "id" in r else r[0]
-        rtype = r["reminder_type"] if "reminder_type" in r else r[1]
-        time_str = r["reminder_time"] if "reminder_time" in r else r[2]
-        hour, minute = map(int, time_str.split(":"))
-
-        def reminder_job(rem_id=rem_id, rtype=rtype):
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT r.reminder_email, r.reminder_phone, u.name
-                FROM reminders r
-                JOIN users u ON u.id = r.user_id
-                WHERE r.id = ?
-            """, (rem_id,))
-            row = cursor.fetchone()
-            cursor.close()
-            conn.close()
-
-            if not row:
-                print("❌ Reminder not found")
-                return
-
-            email = row["reminder_email"]
-            phone = row["reminder_phone"]
-            name = row["name"]
-            message = f"⏰ Hi {name}, this is your {rtype} reminder 🌸"
-
-            if email:
-                send_email(email, "SmartHealthPlus Reminder", message)
-            if phone:
-                send_sms(phone, message)
-
-        job_id = f"reminder_{rem_id}"
-        scheduler.add_job(
-            reminder_job,
-            trigger="cron",
-            hour=hour,
-            minute=minute,
-            id=job_id,
-            replace_existing=True
-        )
-
-# Load reminders when app starts
-load_existing_reminders()
-
-print("🟢 Scheduler started with existing reminders")
-
 
 @app.route("/save-reminder", methods=["POST"])
 @login_required
@@ -660,15 +571,15 @@ def save_reminder():
 
     reminder_type = data.get("type")
     reminder_time = data.get("time")
-    reminder_email = data.get("email")
-    reminder_phone = data.get("phone")
+    reminder_email = data.get("email")      # 🔥 IMPORTANT
+    reminder_phone = data.get("phone")      # 🔥 IMPORTANT
 
     if not reminder_type or not reminder_time:
         return jsonify({"message": "Reminder type and time are required"}), 400
 
     user_id = session["user_id"]
 
-    # ---------------- Save reminder in DB ----------------
+    # ---------------- Save reminder properly ----------------
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -694,25 +605,20 @@ def save_reminder():
     cursor.close()
     conn.close()
 
-    # ---------------- Convert reminder_time to datetime ----------------
     hour, minute = map(int, reminder_time.split(":"))
-    now = datetime.now(ZoneInfo("Asia/Kolkata"))  # IST timezone
-    reminder_dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-    # If time already passed today, schedule for tomorrow
-    if reminder_dt < now:
-        reminder_dt += timedelta(days=1)
 
     # ---------------- Reminder Job ----------------
     def reminder_job(rem_id=reminder_id, rtype=reminder_type):
         conn = get_db_connection()
         cursor = conn.cursor()
+
         cursor.execute("""
             SELECT r.reminder_email, r.reminder_phone, u.name
             FROM reminders r
             JOIN users u ON u.id = r.user_id
             WHERE r.id = ?
         """, (rem_id,))
+
         row = cursor.fetchone()
         cursor.close()
         conn.close()
@@ -727,17 +633,22 @@ def save_reminder():
 
         message = f"⏰ Hi {name}, this is your {rtype} reminder 🌸"
 
+        # ---------------- Email (ALWAYS WORKS) ----------------
         if email:
             send_email(email, "SmartHealthPlus Reminder", message)
+
+        # ---------------- SMS (OPTIONAL / TRIAL LIMIT) ----------------
         if phone:
             send_sms(phone, message)
 
-    # ---------------- Schedule Job with DateTrigger ----------------
+    # ---------------- Unique Job ID ----------------
     job_id = f"reminder_{reminder_id}"
 
     scheduler.add_job(
         reminder_job,
-        trigger=DateTrigger(run_date=reminder_dt),
+        trigger="cron",
+        hour=hour,
+        minute=minute,
         id=job_id,
         replace_existing=True
     )
