@@ -721,21 +721,18 @@ def delete_reminder(reminder_id):
     return redirect(url_for("reminder_history"))
 
 
-
+# ---------------- Recommendation Page ----------------
 @app.route("/recommendation")
 @login_required
 def recommendation():
     user_id = session["user_id"]
 
-    try:
-        # Only generate summary if function exists and returns something
-        if 'get_user_health_summary' in globals():
-            summary = get_user_health_summary(user_id)
-        else:
-            summary = None
-    except Exception as e:
-        summary = None
-        print("Error generating health summary:", e)  # Logs to console
+    # Fetch health summary safely
+    summary = get_user_health_summary(user_id)  # Should return a string
+
+    # If summary is None, set a default message
+    if not summary:
+        summary = "No health summary available yet. Please update your health records."
 
     return render_template(
         "recommendation.html",
