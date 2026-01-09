@@ -46,7 +46,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 
 
 # ---------------- SQLite Connection ----------------
-DB_PATH = os.path.join(os.path.dirname(__file__), "smarthealthplus.db")
+DB_PATH = "/var/data/smarthealthplus.db"
 
 def get_db_connection():
     """Connect to local SQLite DB"""
