@@ -9,3 +9,4 @@ Flask-Dance
 python-dotenv
 APScheduler
 Twilio
+psycopg2-binary
