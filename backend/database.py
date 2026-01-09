@@ -1,28 +1,37 @@
-# backend/database.py
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from dotenv import load_dotenv
+import sqlite3
 
-load_dotenv()
+# ---------------- SQLite Connection ----------------
+DB_PATH = os.path.join(os.path.dirname(__file__), "smarthealthplus.db")
 
-# ---------------- PostgreSQL Connection ----------------
 def get_db_connection():
+    """Connect to local SQLite DB"""
     try:
-        required_vars = ["POSTGRES_HOST", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"]
-        for var in required_vars:
-            if not os.getenv(var):
-                raise ValueError(f"Environment variable {var} is not set")
-
-        conn = psycopg2.connect(
-            host=os.getenv("POSTGRES_HOST"),
-            dbname=os.getenv("POSTGRES_DB"),
-            user=os.getenv("POSTGRES_USER"),
-            password=os.getenv("POSTGRES_PASSWORD"),
-            port=os.getenv("POSTGRES_PORT", "5432"),
-            cursor_factory=RealDictCursor
-        )
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
         return conn
-    except Exception as e:
-        print("❌ PostgreSQL connection error:", e)
+    except sqlite3.Error as e:
+        print("SQLite connection error:", e)
         return None
+
+
+# ---------------- Flask & SQLAlchemy ----------------
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static")
+)
+
+app.secret_key = os.environ.get("SMART_HEALTH_PLUS_SECRET_KEY")
+
+# Use the same absolute path for SQLAlchemy
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
