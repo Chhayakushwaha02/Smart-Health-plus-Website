@@ -35,7 +35,6 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            position: relative;
         }
 
         .nav-left a,
@@ -69,94 +68,52 @@
         .container {
             padding: 20px;
         }
-
-        /* ===== MOBILE NAVBAR ===== */
-        /* Hamburger menu button */
-        .hamburger {
-            display: none;
-            flex-direction: column;
-            cursor: pointer;
-            gap: 4px;
-        }
-
-        .hamburger div {
-            width: 25px;
-            height: 3px;
-            background: white;
-        }
-
-        @media screen and (max-width: 768px) {
-            nav {
-                flex-wrap: wrap;
-            }
-
-            .nav-left, .nav-right {
-                display: none;
-                flex-direction: column;
-                width: 100%;
-                background: var(--nav-bg);
-                margin-top: 10px;
-            }
-
-            .nav-left a, .nav-right a {
-                margin: 10px;
-            }
-
-            .hamburger {
-                display: flex;
-            }
-
-            /* Show nav when active */
-            .nav-left.active, .nav-right.active {
-                display: flex;
-            }
-        }
     </style>
 </head>
 
 <body>
 
 <nav>
-    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-        <!-- LEFT MENU -->
-        <div class="nav-left">
-            {% if session.get("role") == "admin" %}
-                <a href="/admin/dashboard"> Dashboard</a>
-                <a href="/admin/feedback"> Users Feedback</a>
-                <a href="/admin/users">Users Management</a>
-            {% else %}
-                {% if session.get("gender") == "female" %}
-                    <a href="/female/dashboard">Dashboard</a>
-                    <a href="/period">Period Tracker</a>
-                {% else %}
-                    <a href="/dashboard">Dashboard</a>
-                {% endif %}
-                <a href="/sleep">Sleep</a>
-                <a href="/hydration">Hydration</a>
-                <a href="/nutrition">Nutrition</a>
-                <a href="/fitness">Fitness</a>
-                <a href="/stress">Stress</a>
-                <a href="/mood">Mood</a>
-                <a href="/reminder">Reminder</a>
-                <a href="/goal">Goals</a>
-                <a href="/recommendation">Recommendations</a>
-                <a href="/chatbot">Chatbot</a>
-                <a href="/profile">Profile</a>
-            {% endif %}
-        </div>
+    <!-- LEFT MENU -->
+<div class="nav-left">
 
-        <!-- Hamburger button -->
-        <div class="hamburger" onclick="toggleMobileMenu()">
-            <div></div>
-            <div></div>
-            <div></div>
-        </div>
+{% if session.get("role") == "admin" %}
+    <a href="/admin/dashboard"> Dashboard</a>
+    <a href="/admin/feedback"> Users Feedback</a>
+    <a href="/admin/users">Users Management</a>
+{% else %}
 
-        <!-- RIGHT MENU -->
-        <div class="nav-right">
-            <span class="dark-toggle" onclick="toggleDark()">🌙</span>
-            <a href="/logout" class="logout-btn">Logout</a>
-        </div>
+    {% if session.get("gender") == "female" %}
+        <a href="/female/dashboard">Dashboard</a>
+        <a href="/period">Period Tracker</a>  <!-- Added here right after Dashboard -->
+    {% else %}
+        <a href="/dashboard">Dashboard</a>
+    {% endif %}
+
+    <a href="/sleep">Sleep</a>
+    <a href="/hydration">Hydration</a>
+    <a href="/nutrition">Nutrition</a>
+    <a href="/fitness">Fitness</a>
+    <a href="/stress">Stress</a>
+    <a href="/mood">Mood</a>
+    <a href="/reminder">Reminder</a>
+    <a href="/goal">Goals</a>
+    <a href="/recommendation">Recommendations</a>
+
+    {% if session.get("gender") == "female" %}
+        <a href="/chatbot">Chatbot</a>
+    {% else %}
+        <a href="/chatbot">Chatbot</a>
+    {% endif %}
+
+    <a href="/profile">Profile</a>
+{% endif %}
+</div>
+
+    <!-- RIGHT MENU -->
+    <div class="nav-right">
+        <span class="dark-toggle" onclick="toggleDark()">🌙</span>
+        <a href="/logout" class="logout-btn">Logout</a>
     </div>
 </nav>
 
@@ -173,13 +130,8 @@
     if (localStorage.getItem("darkMode") === "true") {
         document.body.classList.add("dark");
     }
-
-    // ===== MOBILE MENU TOGGLE =====
-    function toggleMobileMenu() {
-        document.querySelector(".nav-left").classList.toggle("active");
-        document.querySelector(".nav-right").classList.toggle("active");
-    }
 </script>
 
 </body>
 </html>
+
