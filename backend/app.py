@@ -35,6 +35,15 @@ from flask_dance.contrib.google import make_google_blueprint, google
 from flask_sqlalchemy import SQLAlchemy
 from urllib.parse import urlencode
 
+UTC = ZoneInfo("UTC")
+IST = ZoneInfo("Asia/Kolkata")
+
+def now_utc():
+    return datetime.now(UTC)
+
+def now_ist():
+    return datetime.now(IST)
+
 # ---------------- Load .env ----------------
 load_dotenv()  # This loads your .env file into environment variables
 
@@ -761,7 +770,7 @@ def profile():
     user = cursor.fetchone()
 
     # ----------------- TIMELINE DATA -----------------
-    seven_days_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    seven_days_ago = (now_utc() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
 
     cursor.execute("""
         SELECT category, input_value, recommendation, created_at
@@ -1531,7 +1540,7 @@ def save_health_data_route():
             category,
             json.dumps(value),  # store normalized JSON
             suggestion,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now_utc().strftime("%Y-%m-%d %H:%M:%S")
         ))
         conn.commit()
         cursor.close()
@@ -2141,7 +2150,7 @@ def admin_feedback():
         # Replace the tuple item with datetime object
         feedback_list.append(f[:5] + (feedback_date,) + f[6:])
 
-    current_date = datetime.now()
+    current_date = now_utc()
     return render_template("admin_feedback.html", feedbacks=feedback_list, current_date=current_date)
 
 
