@@ -540,17 +540,13 @@ def send_sms(to_phone, message):
         print("❌ Twilio SMS error:", e)
         return False
 
-# ---------------- Daily Reminder Function (UTC-Aware) ----------------
+# ---------------- Daily Reminder ----------------
 def send_daily_reminder():
-    """
-    Sends daily reminders to users.
-    All times are handled in UTC.
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT u.name, r.reminder_phone, r.reminder_email, r.reminder_time
+        SELECT u.name, r.reminder_phone, r.reminder_email
         FROM reminders r
         JOIN users u ON u.id = r.user_id
         WHERE r.reminder_type = 'daily'
@@ -559,37 +555,22 @@ def send_daily_reminder():
     reminders = cursor.fetchall()
     conn.close()
 
-    for name, phone, email, reminder_time_str in reminders:
-        try:
-            # Convert stored UTC reminder time to datetime object
-            reminder_time = datetime.strptime(reminder_time_str, "%H:%M").replace(tzinfo=ZoneInfo("UTC"))
+    for name, phone, email in reminders:
+        message = f"Hello {name}! This is your daily health reminder 🌸"
 
-            # Check if current UTC time has passed or equals reminder time
-            now_time = now_utc()
-            if now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute:
-                message = f"Hello {name}! This is your daily health reminder 🌸"
+        if phone:
+            send_sms(phone, message)
 
-                if phone:
-                    send_sms(phone, message)
-
-                if email:
-                    send_email(email, "SmartHealthPlus Reminder", message)
-
-        except Exception as e:
-            print("❌ Error in daily reminder for", name, e)
+        if email:
+            send_email(email, "SmartHealthPlus Reminder", message)
 
 
-# ---------------- Scheduler (UTC) ----------------
-scheduler = BackgroundScheduler(timezone="UTC")
-
-# Existing custom reminders (from save_reminder)
-# Already added via scheduler.add_job(...)
-
-# Daily reminder job (check every 1 minute)
-scheduler.add_job(send_daily_reminder, 'interval', minutes=1)
+# ---------------- Scheduler ----------------
+scheduler = BackgroundScheduler()
+scheduler.add_job(send_daily_reminder, "interval", hours=24)  # use minutes=1 for testing
 scheduler.start()
 
-print("🟢 Scheduler started. All reminders (daily + custom) are running.")
+print("🟢 Scheduler started.")
 
 
 @app.route("/save-reminder", methods=["POST"])
@@ -598,30 +579,16 @@ def save_reminder():
     data = request.json
 
     reminder_type = data.get("type")
-    reminder_time = data.get("time")       # format "HH:MM"
-    reminder_email = data.get("email")
-    reminder_phone = data.get("phone")
+    reminder_time = data.get("time")
+    reminder_email = data.get("email")      # 🔥 IMPORTANT
+    reminder_phone = data.get("phone")      # 🔥 IMPORTANT
 
     if not reminder_type or not reminder_time:
         return jsonify({"message": "Reminder type and time are required"}), 400
 
     user_id = session["user_id"]
 
-    # ---------------- Convert IST time to UTC ----------------
-    try:
-        # Parse user-provided time (assume IST)
-        ist_time = datetime.strptime(reminder_time, "%H:%M").replace(
-            tzinfo=ZoneInfo("Asia/Kolkata")
-        )
-        # Convert to UTC
-        utc_time = ist_time.astimezone(ZoneInfo("UTC"))
-        hour = utc_time.hour
-        minute = utc_time.minute
-    except Exception as e:
-        print("❌ Time conversion error:", e)
-        return jsonify({"message": "Invalid time format"}), 400
-
-    # ---------------- Save reminder in DB (store UTC) ----------------
+    # ---------------- Save reminder properly ----------------
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -629,19 +596,17 @@ def save_reminder():
         INSERT INTO reminders (
             user_id,
             reminder_type,
-            reminder_time,       -- store as HH:MM UTC
+            reminder_time,
             reminder_email,
-            reminder_phone,
-            created_at
+            reminder_phone
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?)
     """, (
         user_id,
         reminder_type,
-        utc_time.strftime("%H:%M"),   # stored in UTC
+        reminder_time,
         reminder_email,
-        reminder_phone,
-        now_utc().strftime("%Y-%m-%d %H:%M:%S")
+        reminder_phone
     ))
 
     conn.commit()
@@ -649,7 +614,9 @@ def save_reminder():
     cursor.close()
     conn.close()
 
-    # ---------------- Create Reminder Job ----------------
+    hour, minute = map(int, reminder_time.split(":"))
+
+    # ---------------- Reminder Job ----------------
     def reminder_job(rem_id=reminder_id, rtype=reminder_type):
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -675,20 +642,22 @@ def save_reminder():
 
         message = f"⏰ Hi {name}, this is your {rtype} reminder 🌸"
 
+        # ---------------- Email (ALWAYS WORKS) ----------------
         if email:
             send_email(email, "SmartHealthPlus Reminder", message)
 
+        # ---------------- SMS (OPTIONAL / TRIAL LIMIT) ----------------
         if phone:
             send_sms(phone, message)
 
-    # ---------------- Add cron job (UTC-aware) ----------------
+    # ---------------- Unique Job ID ----------------
     job_id = f"reminder_{reminder_id}"
 
     scheduler.add_job(
         reminder_job,
         trigger="cron",
-        hour=hour,        # UTC hour
-        minute=minute,    # UTC minute
+        hour=hour,
+        minute=minute,
         id=job_id,
         replace_existing=True
     )
