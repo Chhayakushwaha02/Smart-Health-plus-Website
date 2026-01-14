@@ -1,16 +1,23 @@
-from datetime import date, datetime
+# utils/female_cycle.py
+from datetime import datetime, date
 
 def get_cycle_phase(last_period_date, cycle_length=28):
     """
-    Returns the current phase of the cycle based on the last period date.
+    Returns the current phase of the cycle based on last_period_date.
+    Handles last_period_date as string (VARCHAR in DB).
     """
     today = date.today()
+
+    # Convert string to date if needed
     if isinstance(last_period_date, str):
-        last_period_date = datetime.strptime(last_period_date, "%Y-%m-%d").date()
+        try:
+            last_period_date = datetime.strptime(last_period_date, "%Y-%m-%d").date()
+        except ValueError:
+            return "Unknown"  # fallback if invalid format
 
     days_passed = (today - last_period_date).days
     if days_passed < 0:
-        return "unknown"
+        return "Unknown"
 
     day_in_cycle = days_passed % cycle_length
 
@@ -23,26 +30,25 @@ def get_cycle_phase(last_period_date, cycle_length=28):
     else:
         return "Luteal Phase"
 
+
 def generate_female_health_summary(record):
     phase = get_cycle_phase(record["last_period_date"], int(record["cycle_length"]))
 
-    summary = f"""
-Female Health Summary:
-- Current Cycle Phase: {phase}
-- Cycle Length: {record["cycle_length"]} days
-- Period Duration: {record["period_duration"]} days
-- Symptoms: {record["symptoms"] or "None"}
+    female_health_summary = f"""- Cycle Length: {record['cycle_length']} days
+- Period Duration: {record['period_duration']} days
+- Symptoms: {record['symptoms'] or "None"}"""
 
-Wellness Suggestions:
-"""
-
+    # Wellness Suggestions
     if phase == "Menstrual Phase":
-        summary += "- Focus on rest, hydration, iron-rich foods, and light stretching."
+        wellness_suggestions = "- Focus on rest, hydration, iron-rich foods, and light stretching."
     elif phase == "Follicular Phase":
-        summary += "- Energy levels improve. Good time for planning, workouts, and learning."
+        wellness_suggestions = "- Energy levels improve. Good time for planning, workouts, and learning."
     elif phase == "Ovulation Phase":
-        summary += "- Peak confidence and strength. Maintain hydration and balanced nutrition."
-    else:
-        summary += "- Mood may fluctuate. Prioritize sleep, stress control, and self-care."
+        wellness_suggestions = "- Peak confidence and strength. Maintain hydration and balanced nutrition."
+    else:  # Luteal Phase
+        wellness_suggestions = "- Mood may fluctuate. Prioritize sleep, stress control, and self-care."
 
-    return summary.strip()
+    # Add common line
+    wellness_suggestions += "\n\nFor more suggestions and good advice, click the button below to talk to the chatbot."
+
+    return female_health_summary, wellness_suggestions  # <-- return TWO values

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 from collections import defaultdict
 import pytz
-from database import get_db_connection
+from database import get_db_connection  
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.platypus.tables import Table as RLTable
 from reportlab.lib.units import cm
@@ -21,19 +21,20 @@ from fpdf import FPDF
 import io
 from statistics import mean
 from werkzeug.security import generate_password_hash, check_password_hash
-from utils.chatbot_recommendation import ( get_user_health_summary)
+from utils.chatbot_recommendation import get_user_health_summary
 import smtplib
 from email.message import EmailMessage
 from twilio.rest import Client
 from apscheduler.schedulers.background import BackgroundScheduler
-from utils.femalecycle import get_cycle_phase, generate_female_health_summary
-import sqlite3
+from utils.female_cycle import get_cycle_phase, generate_female_health_summary
 from dotenv import load_dotenv
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_sqlalchemy import SQLAlchemy
 from urllib.parse import urlencode
+import mysql.connector
+from mysql.connector import Error
 
 # ---------------- Load .env ----------------
 load_dotenv()  # This loads your .env file into environment variables
@@ -42,16 +43,22 @@ load_dotenv()  # This loads your .env file into environment variables
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 
-
-# ---------------- SQLite Connection ----------------
-DB_PATH = os.path.join(os.path.dirname(__file__), "smarthealthplus.db")
-
+# ---------------- MySQL Connection ----------------
 def get_db_connection():
-    """Connect to local SQLite DB"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
+    """Connect to MySQL DB"""
+    try:
+        connection = mysql.connector.connect(
+            host=os.getenv("DB_HOST"),
+            port=int(os.getenv("DB_PORT", 3306)),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            database=os.getenv("DB_NAME"),
+            autocommit=True
+        )
+        return connection
+    except Error as e:
+        print(f"Error connecting to MySQL: {e}")
+        return None
 
 # ---------------- PATH SETUP ----------------
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -62,12 +69,15 @@ app = Flask(
     static_folder=os.path.join(BASE_DIR, "static")
 )
 
-
 # ---------------- SECURITY CONFIG ----------------
 app.secret_key = os.environ.get("SMART_HEALTH_PLUS_SECRET_KEY")
 
-
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///smarthealthplus.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = "mysql+mysqlconnector://{}:{}@{}/{}".format(
+    os.environ.get("MYSQL_USER", "root"),
+    os.environ.get("MYSQL_PASSWORD", ""),
+    os.environ.get("MYSQL_HOST", "localhost"),
+    os.environ.get("MYSQL_DB", "smarthealthplus")
+)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # ---------------- Database ----------------
@@ -137,10 +147,10 @@ def register():
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
 
         # Check if email already exists
-        cursor.execute("SELECT id FROM users WHERE email=?", (email,))
+        cursor.execute("SELECT id FROM users WHERE email=%s", (email,))
         if cursor.fetchone():
             conn.close()
             return jsonify(success=False, message="Email already exists")
@@ -148,9 +158,8 @@ def register():
         # Insert user
         cursor.execute("""
             INSERT INTO users (name, age, gender, mobile, email, password, role)
-            VALUES (?,?,?,?,?,?,?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (name, age, gender, mobile, email, hashed, role))
-
 
         conn.commit()
         conn.close()
@@ -158,10 +167,8 @@ def register():
         return jsonify(success=True, message="Registration successful")
 
     except Exception as e:
-     print("Error during registration:", e)  # Check the console
-     return jsonify(success=False, message=f"Error: {str(e)}")
-
-
+        print("Error during registration:", e)  # Check the console
+        return jsonify(success=False, message=f"Error: {str(e)}")
 
 # ---------------- LOGIN ----------------
 @app.route("/login", methods=["POST"])
@@ -177,11 +184,10 @@ def login():
         session["name"] = "Admin"
         return jsonify(success=True, redirect_url="/admin/dashboard")
 
-    # --- Normal user login from DB ---
+    # --- Normal user login from MySQL ---
     conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE email=?", (email,))
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
     user = cursor.fetchone()
     conn.close()
 
@@ -211,7 +217,6 @@ def login():
     return jsonify(success=True, redirect_url=redirect_url)
 
 
-
 # ---------------- GOOGLE OAUTH CONFIG ----------------
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
@@ -231,7 +236,7 @@ def google_login():
         "access_type": "offline",
         "prompt": "select_account"  # <- Forces account selection
     }
-    return redirect(f"{GOOGLE_AUTH_ENDPOINT}?{urlencode(params)}")
+    return redirect(f"{GOOGLE_AUTH_ENDPOINT}%s{urlencode(params)}")
 
 
 @app.route("/auth/google/callback")
@@ -264,14 +269,14 @@ def google_callback():
     if not email:
         return "Error fetching email from Google", 400
 
-    # Check / insert user in SQLite
+    # Check / insert user in MySQL
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, role, gender FROM users WHERE email=?", (email,))
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, role, gender FROM users WHERE email=%s", (email,))
     user = cursor.fetchone()
     if not user:
         cursor.execute(
-            "INSERT INTO users (name, email, role, auth_provider) VALUES (?, ?, ?, ?)",
+            "INSERT INTO users (name, email, role, auth_provider) VALUES (%s, %s, %s, %s)",
             (name, email, "user", "google")
         )
         conn.commit()
@@ -279,7 +284,7 @@ def google_callback():
         role = "user"
         gender = None
     else:
-        user_id, role, gender = user
+        user_id, role, gender = user["id"], user["role"], user["gender"]
 
     # Set session variables
     session["user_id"] = user_id
@@ -298,7 +303,7 @@ def google_callback():
         return redirect("/dashboard")  # male / other / unknown
 
 
-# ---------------- Google LOGIN ----------------
+# ---------------- Google LOGIN SESSION ----------------
 @app.route("/auth/google-session", methods=["POST"])
 def google_session():
     data = request.get_json(force=True)
@@ -310,16 +315,16 @@ def google_session():
         return jsonify({"success": False, "error": "Invalid user"}), 400
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     # Fetch user including gender
-    cursor.execute("SELECT id, role, name, gender FROM users WHERE email=?", (email,))
+    cursor.execute("SELECT id, role, name, gender FROM users WHERE email=%s", (email,))
     user = cursor.fetchone()
 
     if not user:
         # If new Google user, insert into DB without gender (can ask later)
         cursor.execute(
-            "INSERT INTO users (name, email, role, auth_provider) VALUES (?, ?, ?, ?)",
+            "INSERT INTO users (name, email, role, auth_provider) VALUES (%s, %s, %s, %s)",
             (name, email, "user", "google")
         )
         conn.commit()
@@ -327,7 +332,7 @@ def google_session():
         role = "user"
         gender = None
     else:
-        user_id, role, existing_name, gender = user
+        user_id, role, existing_name, gender = user["id"], user["role"], user["name"], user["gender"]
         name = existing_name  # use name from DB
 
     # Set session variables
@@ -341,7 +346,7 @@ def google_session():
     # Decide dashboard redirect based on gender
     if role == "admin":
         redirect_url = "/admin/dashboard"
-    elif gender == "female":
+    elif gender and gender.lower() == "female":
         redirect_url = "/female/dashboard"
     else:
         redirect_url = "/dashboard"  # male / other / unknown
@@ -352,12 +357,12 @@ def google_session():
     })
 
 
-
 # ---------------- LOGOUT ----------------
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/auth")
+
 
 # ---------------- DASHBOARD ----------------
 @app.route("/dashboard")
@@ -417,19 +422,19 @@ def mood():
 def hydration():
     return render_template("hydration.html")
 
+
 @app.route("/goal")
 @login_required
 def goal():
     score, wellness, _ = calculate_health_score(session["user_id"])
 
-    # Fetch latest data again (light query)
+    # Fetch latest data from MySQL
     conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT category, input_value
         FROM health_data
-        WHERE user_id=?
+        WHERE user_id=%s
         ORDER BY created_at DESC
     """, (session["user_id"],))
     rows = cursor.fetchall()
@@ -450,11 +455,11 @@ def goal():
         tip=ai_tip
     )
 
-
 @app.route("/reminder")
 @login_required
 def reminder():
     return render_template("reminder.html")
+
 
 @app.route("/test-email")
 def test_email():
@@ -464,6 +469,7 @@ def test_email():
         "If you received this, email is working ✅"
     )
     return "Email sent"
+
 
 # ---------------- Email Function (ONLY ONE) ----------------
 def send_email(to_email, subject, body):
@@ -490,12 +496,9 @@ def send_email(to_email, subject, body):
         print("❌ Email error:", e)
         return False
 
+
 # ---------------- Twilio SMS Function ----------------
 def send_sms(to_phone, message):
-    """
-    Send SMS using Twilio.
-    Reads env variables inside function to avoid Invalid URL.
-    """
     from twilio.rest import Client
 
     TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
@@ -531,10 +534,11 @@ def send_sms(to_phone, message):
         print("❌ Twilio SMS error:", e)
         return False
 
+
 # ---------------- Daily Reminder ----------------
 def send_daily_reminder():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     cursor.execute("""
         SELECT u.name, r.reminder_phone, r.reminder_email
@@ -546,7 +550,11 @@ def send_daily_reminder():
     reminders = cursor.fetchall()
     conn.close()
 
-    for name, phone, email in reminders:
+    for r in reminders:
+        name = r["name"]
+        phone = r["reminder_phone"]
+        email = r["reminder_email"]
+
         message = f"Hello {name}! This is your daily health reminder 🌸"
 
         if phone:
@@ -581,7 +589,7 @@ def save_reminder():
 
     # ---------------- Save reminder properly ----------------
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     cursor.execute("""
         INSERT INTO reminders (
@@ -591,7 +599,7 @@ def save_reminder():
             reminder_email,
             reminder_phone
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
     """, (
         user_id,
         reminder_type,
@@ -610,13 +618,13 @@ def save_reminder():
     # ---------------- Reminder Job ----------------
     def reminder_job(rem_id=reminder_id, rtype=reminder_type):
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
 
         cursor.execute("""
             SELECT r.reminder_email, r.reminder_phone, u.name
             FROM reminders r
             JOIN users u ON u.id = r.user_id
-            WHERE r.id = ?
+            WHERE r.id = %s
         """, (rem_id,))
 
         row = cursor.fetchone()
@@ -633,11 +641,9 @@ def save_reminder():
 
         message = f"⏰ Hi {name}, this is your {rtype} reminder 🌸"
 
-        # ---------------- Email (ALWAYS WORKS) ----------------
         if email:
             send_email(email, "SmartHealthPlus Reminder", message)
 
-        # ---------------- SMS (OPTIONAL / TRIAL LIMIT) ----------------
         if phone:
             send_sms(phone, message)
 
@@ -663,11 +669,11 @@ def save_reminder():
 def reminder_history():
     user_id = session["user_id"]
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT id, reminder_type, reminder_time, created_at
         FROM reminders
-        WHERE user_id = ?
+        WHERE user_id = %s
         ORDER BY created_at DESC
     """, (user_id,))
     rows = cursor.fetchall()
@@ -676,7 +682,6 @@ def reminder_history():
 
     reminders = []
     for r in rows:
-        # Format time to 12-hour AM/PM
         time_str = r["reminder_time"]
         try:
             dt_obj = datetime.strptime(time_str, "%H:%M")
@@ -684,13 +689,9 @@ def reminder_history():
         except:
             formatted_time = time_str
 
-        # ---------------- Correct timezone for created_at ----------------
         try:
             dt_created = datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S")
-            
-            # Assuming your server stores UTC, convert to India Standard Time (UTC+5:30)
             dt_created = dt_created.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Asia/Kolkata"))
-            
             reminder_date = dt_created.date()
         except:
             reminder_date = date.today()  # fallback
@@ -707,6 +708,7 @@ def reminder_history():
         reminders=reminders
     )
 
+
 # ------------------- Delete Reminder -------------------
 @app.route("/delete-reminder/<int:reminder_id>", methods=["POST"])
 @login_required
@@ -714,33 +716,27 @@ def delete_reminder(reminder_id):
     user_id = session["user_id"]
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM reminders WHERE id = ? AND user_id = ?", (reminder_id, user_id))
+    cursor.execute("DELETE FROM reminders WHERE id = %s AND user_id = %s", (reminder_id, user_id))
     conn.commit()
     cursor.close()
     conn.close()
     return redirect(url_for("reminder_history"))
 
 
-
 @app.route("/recommendation")
 @login_required
 def recommendation():
-    user_id = session["user_id"]
-
-    summary = get_user_health_summary(user_id)
-
-    return render_template(
-        "recommendation.html",
-        health_summary=summary
-    )
-
-
+    from flask import jsonify
+    data = generate_recommendation()  # This returns a JSON response
+    summary = data.get_json().get("health_summary", "")
+    return render_template("recommendation.html", health_summary=summary)
 
 # ---------------- CHATBOT PAGE ----------------
 @app.route("/chatbot")
 @login_required
 def chatbot():
     return render_template("chatbot.html")
+
 
 
 # ---------------- PROFILE ----------------
@@ -750,15 +746,18 @@ def profile():
     user_id = session.get("user_id")
 
     conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     # ----------------- USER INFO -----------------
     cursor.execute(
-        "SELECT name, email, mobile, age, gender FROM users WHERE id=?",
+        "SELECT name, email, mobile, age, gender FROM users WHERE id=%s",
         (user_id,)
     )
     user = cursor.fetchone()
+    if not user:
+        cursor.close()
+        conn.close()
+        return "User not found", 404
 
     # ----------------- TIMELINE DATA -----------------
     seven_days_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
@@ -766,18 +765,15 @@ def profile():
     cursor.execute("""
         SELECT category, input_value, recommendation, created_at
         FROM health_data
-        WHERE user_id=? AND created_at >= ?
+        WHERE user_id=%s AND created_at >= %s
         ORDER BY created_at DESC
     """, (user_id, seven_days_ago))
 
     rows = cursor.fetchall()
-
     timeline_data = defaultdict(list)
 
     for row in rows:
-        day = datetime.strptime(
-            row["created_at"], "%Y-%m-%d %H:%M:%S"
-        ).strftime("%d %b %Y")
+        day = row["created_at"].strftime("%d %b %Y") if isinstance(row["created_at"], datetime) else row["created_at"][:10]
 
         category = row["category"]
         value = row["input_value"]
@@ -856,7 +852,6 @@ def profile():
             "recommendation": row["recommendation"]
         })
 
-
     # ---------------- HELPER FUNCTION ----------------
     def calculate_summary(data_dict):
         summary = {
@@ -876,7 +871,7 @@ def profile():
             stress_avg = mean(v["stress"]) if v["stress"] else 0
             mood_avg = mean(v["mood"]) if v["mood"] else 0
 
-            health_score = round((sleep_avg*10 + hydration_sum*5 + nutrition_avg*10 + 
+            health_score = round((sleep_avg*10 + hydration_sum*5 + nutrition_avg*10 +
                                   fitness_minutes_sum*0.5 + (5-stress_avg)*10 + mood_avg*10) / 6, 1)
 
             summary["sleep"].append(sleep_avg)
@@ -910,12 +905,12 @@ def profile():
     cursor.execute("""
         SELECT category, input_value, created_at
         FROM health_data
-        WHERE user_id=? AND DATE(created_at) >= DATE('now','-7 day')
+        WHERE user_id=%s AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
     """, (user_id,))
     weekly_rows = cursor.fetchall()
 
     for r in weekly_rows:
-        day = datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S").strftime("%d %b")
+        day = r["created_at"].strftime("%d %b") if isinstance(r["created_at"], datetime) else r["created_at"][:10]
         if r["category"] == "fitness":
             try:
                 d = json.loads(r["input_value"])
@@ -941,12 +936,12 @@ def profile():
     cursor.execute("""
         SELECT category, input_value, created_at
         FROM health_data
-        WHERE user_id=? AND DATE(created_at) >= DATE('now','-30 day')
+        WHERE user_id=%s AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
     """, (user_id,))
     monthly_rows = cursor.fetchall()
 
     for r in monthly_rows:
-        day = datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S").strftime("%d %b")
+        day = r["created_at"].strftime("%d %b") if isinstance(r["created_at"], datetime) else r["created_at"][:10]
         if r["category"] == "fitness":
             try:
                 d = json.loads(r["input_value"])
@@ -970,18 +965,15 @@ def profile():
         "profile.html",
         name=user["name"],
         email=user["email"],
-        mobile=user["mobile"],  # ✅ now mobile is passed to template
+        mobile=user["mobile"],
         age=user["age"],
         gender=user["gender"],
-        timeline_data=timeline_data,  # now a dict grouped by date
+        timeline_data=timeline_data,
         weekly_summary=weekly_summary if weekly_summary["dates"] else None,
         monthly_summary=monthly_summary if monthly_summary["dates"] else None
     )
 
-
-
 # ---------------- UPDATE PROFILE ----------------
-
 @app.route("/update-profile", methods=["POST"])
 @login_required
 def update_profile():
@@ -998,38 +990,37 @@ def update_profile():
     if not name or not email or not mobile:
         return jsonify({"status": "error", "message": "Name, Email, and Mobile are required"}), 400
 
-    # 🔥 NORMALIZE gender
     gender_normalized = gender.lower() if gender else None
 
     password_hashed = None
     if password or confirm_password:
         if password != confirm_password:
             return jsonify({"status": "error", "message": "Passwords do not match"}), 400
-        from werkzeug.security import generate_password_hash
         password_hashed = generate_password_hash(password)
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    query = "UPDATE users SET name=?, email=?, mobile=?, gender=?, age=?"
+    query = "UPDATE users SET name=%s, email=%s, mobile=%s, gender=%s, age=%s"
     params = [name, email, mobile, gender_normalized, age]
 
     if password_hashed:
-        query += ", password=?"
+        query += ", password=%s"
         params.append(password_hashed)
 
-    query += " WHERE id=?"
+    query += " WHERE id=%s"
     params.append(user_id)
 
     cursor.execute(query, params)
     conn.commit()
+    cursor.close()
     conn.close()
 
-    # 🔥 UPDATE SESSION IMMEDIATELY
+    # Update session
     session["name"] = name
     session["gender"] = gender_normalized
 
-    # 🔥 DECIDE DASHBOARD HERE (backend decides, not frontend)
+    # Decide redirect based on role
     if session.get("role") == "admin":
         redirect_url = "/admin/dashboard"
     elif gender_normalized == "female":
@@ -1044,8 +1035,7 @@ def update_profile():
     })
 
 
-# ---------------- PDF DOWNLOAD WITH DATE RANGE & DETAILED SUMMARY ----------------
-
+# ---------------- PDF DOWNLOAD WITH DATE RANGE ----------------
 @app.route("/download-health-report")
 @login_required
 def download_health_report():
@@ -1060,27 +1050,28 @@ def download_health_report():
     try:
         start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
         end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
-    except:
+    except ValueError:
         return "Invalid date format. Use YYYY-MM-DD", 400
 
     conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
-    cursor.execute("SELECT name, email, mobile FROM users WHERE id=?", (user_id,))
+    # Fetch user info
+    cursor.execute("SELECT name, email, mobile FROM users WHERE id=%s", (user_id,))
     user = cursor.fetchone()
-
     if not user:
+        cursor.close()
+        conn.close()
         return "User not found", 404
 
+    # Fetch health data for the date range
     cursor.execute("""
         SELECT category, input_value, recommendation, created_at
         FROM health_data
-        WHERE user_id = ?
-          AND DATE(created_at) BETWEEN ? AND ?
+        WHERE user_id = %s
+          AND DATE(created_at) BETWEEN %s AND %s
         ORDER BY created_at ASC
-    """, (user_id, start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")))
-
+    """, (user_id, start_dt, end_dt))
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -1088,77 +1079,77 @@ def download_health_report():
     if not rows:
         return "No health data found for selected date range", 404
 
-    timeline = defaultdict(list)
+    # ---------------- Helper ----------------
+    def safe_float(val):
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return 0
 
-    sleep_vals, hydration_vals = [], []
-    stress_vals, mood_vals = [], []
+    # ---------------- PROCESS DATA ----------------
+    timeline = defaultdict(list)
+    sleep_vals, hydration_vals, stress_vals, mood_vals = [], [], [], []
     fitness_minutes, fitness_steps = 0, 0
 
-    # ---------- PROCESS DATA ----------
     for r in rows:
-        date_str = r["created_at"][:10]
+        # Ensure created_at is datetime
+        dt = r["created_at"]
+        if isinstance(dt, str):
+            dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
+        date_str = dt.strftime("%Y-%m-%d")
+
         value = r["input_value"]
         display_value = ""
 
-        if r["category"] == "sleep":
-            try:
-                d = json.loads(value)
-                sleep_vals.append(float(d.get("hours", 0)))
-                display_value = f"Sleep Duration: {d.get('hours', 0)} hours | Quality: {d.get('quality', 'N/A')} | Reason: {d.get('reason', 'N/A')}"
-            except:
-                display_value = value
+        try:
+            data_json = json.loads(value)
+        except:
+            data_json = {}
 
-        elif r["category"] == "hydration":
-            try:
-                d = json.loads(value)
-                display_value = f"Hydration Level: {d.get('level', 'N/A')} | Reason: {d.get('reason', 'N/A')}"
-            except:
-                display_value = value
+        category = r["category"].lower()
 
-        elif r["category"] == "stress":
-            try:
-                d = json.loads(value)
-                stress_vals.append(float(d.get("level_value", 0)))
-                display_value = f"Stress Level: {d.get('level', 'N/A')} | Reason: {d.get('reason', 'N/A')}"
-            except:
-                display_value = value
+        if category == "sleep":
+            hours = safe_float(data_json.get("hours", 0))
+            sleep_vals.append(hours)
+            display_value = f"Sleep Duration: {hours} hours | Quality: {data_json.get('quality','N/A')} | Reason: {data_json.get('reason','N/A')}"
 
-        elif r["category"] == "mood":
-            try:
-                d = json.loads(value)
-                mood_vals.append(float(d.get("score", 0)))
-                display_value = f"Mood: {d.get('mood', 'N/A')} | Reason: {d.get('reason', 'N/A')}"
-            except:
-                display_value = value
+        elif category == "hydration":
+            level = data_json.get("level", 0)
+            hydration_vals.append(safe_float(level))
+            display_value = f"Hydration Level: {level} | Reason: {data_json.get('reason','N/A')}"
 
-        elif r["category"] == "nutrition":
-            try:
-                d = json.loads(value)
-                display_value = f"Nutrition Quality: {d.get('quality', value)} | Reason: {d.get('reason', 'N/A')}"
-            except:
-                display_value = f"Nutrition Quality: {value}"
+        elif category == "stress":
+            level = safe_float(data_json.get("level_value", 0))
+            stress_vals.append(level)
+            display_value = f"Stress Level: {data_json.get('level','N/A')} | Reason: {data_json.get('reason','N/A')}"
 
-        elif r["category"] == "fitness":
-            try:
-                d = json.loads(value)
-                fitness_minutes += int(d.get("minutes", 0))
-                fitness_steps += int(d.get("steps", 0))
-                display_value = f"Workout Minutes: {d.get('minutes',0)} mins | Workout Type: {d.get('type','Unspecified')} | Daily Steps: {d.get('steps',0)} steps"
-            except:
-                display_value = value
+        elif category == "mood":
+            score = safe_float(data_json.get("score", 0))
+            mood_vals.append(score)
+            display_value = f"Mood: {data_json.get('mood','N/A')} | Reason: {data_json.get('reason','N/A')}"
+
+        elif category == "nutrition":
+            display_value = f"Nutrition Quality: {data_json.get('quality', value)} | Reason: {data_json.get('reason','N/A')}"
+
+        elif category == "fitness":
+            minutes = int(safe_float(data_json.get("minutes", 0)))
+            steps = int(safe_float(data_json.get("steps", 0)))
+            fitness_minutes += minutes
+            fitness_steps += steps
+            display_value = f"Workout Minutes: {minutes} mins | Workout Type: {data_json.get('type','Unspecified')} | Daily Steps: {steps} steps"
 
         timeline[date_str].append({
-            "category": r["category"].capitalize(),
+            "category": category.capitalize(),
             "value": display_value,
-            "recommendation": r["recommendation"] or ""
+            "recommendation": r.get("recommendation","")
         })
 
-    # ---------- SUMMARY ----------
-    avg_sleep = round(sum(sleep_vals) / len(sleep_vals), 1) if sleep_vals else 0
-    total_hydration = sum(hydration_vals)
-    avg_stress = round(sum(stress_vals) / len(stress_vals), 1) if stress_vals else 0
-    avg_mood = round(sum(mood_vals) / len(mood_vals), 1) if mood_vals else 0
-    health_score = round((avg_sleep + avg_mood - avg_stress) / 3, 1) if avg_sleep else 0
+    # ---------------- SUMMARY ----------------
+    avg_sleep = round(sum(sleep_vals)/len(sleep_vals),1) if sleep_vals else 0
+    total_hydration = round(sum(hydration_vals),1)
+    avg_stress = round(sum(stress_vals)/len(stress_vals),1) if stress_vals else 0
+    avg_mood = round(sum(mood_vals)/len(mood_vals),1) if mood_vals else 0
+    health_score = round((avg_sleep + avg_mood - avg_stress)/3,1) if avg_sleep else 0
 
     summary_text = (
         f"During the selected period, your average sleep was {avg_sleep} hours per day. "
@@ -1169,38 +1160,35 @@ def download_health_report():
         f"Overall, your calculated health score for this period is {health_score}/10."
     )
 
-    # ---------- CREATE PDF ----------
+    # ---------------- CREATE PDF ----------------
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=20)
     styles = getSampleStyleSheet()
     elements = []
 
     elements.append(Paragraph("<b>Smart Health Plus – Health Report</b>", styles["Title"]))
-    elements.append(Spacer(1, 12))
-
+    elements.append(Spacer(1,12))
     elements.append(Paragraph(f"<b>Name:</b> {user['name']}", styles["Normal"]))
     elements.append(Paragraph(f"<b>Email:</b> {user['email']}", styles["Normal"]))
     elements.append(Paragraph(f"<b>Contact Number:</b> {user['mobile']}", styles["Normal"]))
-
-    elements.append(Spacer(1, 14))
+    elements.append(Spacer(1,14))
     elements.append(Paragraph("<b>Health Summary</b>", styles["Heading2"]))
-    elements.append(Spacer(1, 6))
+    elements.append(Spacer(1,6))
     elements.append(Paragraph(summary_text, styles["Normal"]))
-    elements.append(Spacer(1, 14))
-
+    elements.append(Spacer(1,14))
     elements.append(Paragraph("<b>Health Data</b>", styles["Heading2"]))
-    elements.append(Spacer(1, 6))
+    elements.append(Spacer(1,6))
 
     for date, entries in timeline.items():
         elements.append(Paragraph(f"<b>{date}</b>", styles["Heading3"]))
-        elements.append(Spacer(1, 4))
+        elements.append(Spacer(1,4))
         for e in entries:
             elements.append(Paragraph(
                 f"- <b>{e['category']}</b>: {e['value']}<br/><b>Recommendation:</b> {e['recommendation']}",
                 styles["Normal"]
             ))
-            elements.append(Spacer(1, 6))
-        elements.append(Spacer(1, 10))
+            elements.append(Spacer(1,6))
+        elements.append(Spacer(1,10))
 
     doc.build(elements)
     pdf_buffer.seek(0)
@@ -1212,28 +1200,53 @@ def download_health_report():
 @app.route("/reset-password", methods=["POST"])
 def reset_password():
     data = request.get_json()
+
+    if not data:
+        return jsonify({"success": False, "message": "Invalid request"}), 400
+
     email = data.get("email")
     password = data.get("password")
 
     if not email or not password:
-        return jsonify({"success": False, "message": "Email and password required"})
+        return jsonify({"success": False, "message": "Email and password required"}), 400
 
-    # Hash the password before storing
+    # Hash the password
     hashed_password = generate_password_hash(password)
 
-    # Update password in DB
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET password = ? WHERE email = ?", (hashed_password, email))
-    conn.commit()
-    updated_rows = cursor.rowcount
-    conn.close()
+    # ---------------- MYSQL CONNECTION ----------------
+    import mysql.connector
+    from mysql.connector import Error
 
-    if updated_rows == 0:
-        return jsonify({"success": False, "message": "User not found!"})
+    try:
+        conn = mysql.connector.connect(
+            host=os.getenv("DB_HOST"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            database=os.getenv("DB_NAME")
+        )
 
-    return jsonify({"success": True, "message": "Password reset successfully"})
+        cursor = conn.cursor()
 
+        cursor.execute(
+            "UPDATE users SET password = %s WHERE email = %s",
+            (hashed_password, email)
+        )
+
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({"success": False, "message": "User not found!"}), 404
+
+        return jsonify({"success": True, "message": "Password reset successfully"})
+
+    except Error as e:
+        return jsonify({"success": False, "message": "Database error"}), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 # ---------------- SUGGESTION LOGIC ----------------
@@ -1445,7 +1458,9 @@ def generate_suggestion(category, value, include_chatbot_line=True):
 def save_health_data_route():
     import json
     from datetime import datetime
+    import mysql.connector
 
+    # ---------------- 1. Receive Data ----------------
     data = request.get_json()
     if not data:
         return jsonify({"success": False, "error": "No data received"}), 400
@@ -1463,7 +1478,7 @@ def save_health_data_route():
         except:
             value = {"raw": value}
 
-    # ---------------- SAFE CONVERSIONS ----------------
+    # ---------------- 2. Safe Conversions ----------------
     def safe_int(val):
         try:
             return int(val)
@@ -1478,68 +1493,72 @@ def save_health_data_route():
 
     category_lower = category.lower()
 
-    # ----------- FITNESS -----------
+    # ----------- Normalize Data ----------- 
     if category_lower == "fitness":
-        # Map all possible frontend keys to backend standard keys
         value["minutes"] = safe_int(value.get("minutes") or value.get("workoutMinutes") or 0)
         value["steps"] = safe_int(value.get("steps") or value.get("dailySteps") or 0)
         value["type"] = value.get("type") or value.get("workoutType") or "Unspecified"
 
-    # ----------- SLEEP -----------
     elif category_lower == "sleep":
         value["hours"] = safe_float(value.get("hours") or 0)
         value["quality"] = value.get("quality") or "Unspecified"
         value["reason"] = value.get("reason") or "Not specified"
 
-    # ----------- HYDRATION -----------
     elif category_lower == "hydration":
         value["level"] = value.get("level") or "Unspecified"
         value["reason"] = value.get("reason") or "Not specified"
 
-    # ----------- NUTRITION -----------
     elif category_lower == "nutrition":
         value["quality"] = value.get("quality") or "Unspecified"
         value["reason"] = value.get("reason") or "Not specified"
 
-    # ----------- STRESS -----------
     elif category_lower == "stress":
         value["level"] = value.get("level") or "Unspecified"
         value["reason"] = value.get("reason") or "Not specified"
 
-    # ----------- MOOD -----------
     elif category_lower == "mood":
         value["mood"] = value.get("mood") or "Unspecified"
         value["reason"] = value.get("reason") or "Not specified"
 
-    # Generate suggestion without chatbot line
+    # ---------------- 3. Generate Suggestion ----------------
     suggestion = generate_suggestion(category, value, include_chatbot_line=False)
 
-    # ---------------- SAVE TO DB ----------------
+    # ---------------- 4. Save to MySQL ----------------
     user_id = session.get("user_id")
     if not user_id:
         return jsonify({"success": False, "error": "User not logged in"}), 401
 
     try:
-        conn = get_db_connection()
+        # Use proper environment variables
+        conn = mysql.connector.connect(
+            host=os.getenv("DB_HOST"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            database=os.getenv("DB_NAME")
+        )
         cursor = conn.cursor()
+
         cursor.execute("""
             INSERT INTO health_data 
             (user_id, category, input_value, recommendation, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         """, (
             user_id,
             category,
-            json.dumps(value),  # store normalized JSON
+            json.dumps(value),  # Always store JSON as string
             suggestion,
             datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ))
+
+        # 🔥 MUST CALL COMMIT to save data
         conn.commit()
+
         cursor.close()
         conn.close()
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-    # Return suggestion for UI
+    # ---------------- 5. Return Suggestion ----------------
     suggestion_ui = generate_suggestion(category, value, include_chatbot_line=True)
     return jsonify({"success": True, "suggestion": suggestion_ui})
 
@@ -1552,13 +1571,15 @@ def generate_recommendation():
     user_id = session["user_id"]
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
+
     cursor.execute("""
         SELECT category, input_value
         FROM health_data
-        WHERE user_id = ?
+        WHERE user_id = %s
         ORDER BY created_at DESC
     """, (user_id,))
+
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -1569,7 +1590,7 @@ def generate_recommendation():
             "health_summary": ""
         })
 
-    # Latest data per category
+    # ---------------- LATEST DATA PER CATEGORY ----------------
     latest_data = {}
     for row in rows:
         if row["category"] not in latest_data:
@@ -1591,7 +1612,7 @@ def generate_recommendation():
         try:
             return float(val)
         except (TypeError, ValueError):
-            return 0
+            return 0.0
 
     # ---------------- FITNESS ----------------
     fitness = latest_data.get("fitness", {})
@@ -1600,6 +1621,7 @@ def generate_recommendation():
     workout_type = fitness.get("type") or "Unspecified"
 
     summary_lines.append(f"Fitness: {minutes} min ({workout_type}), Steps: {steps}")
+
     if minutes < 30 and steps < 6000:
         rec_messages.append("Workout duration and steps are below recommended levels.")
     elif minutes < 30:
@@ -1619,65 +1641,72 @@ def generate_recommendation():
             hours = safe_float(data.get("hours"))
             quality = data.get("quality") or "Unspecified"
             reason = data.get("reason") or "Not specified"
+
             summary_lines.append(f"Sleep: {hours} hours, Quality: {quality}, Reason: {reason}")
+
             if hours < 6:
-                rec_messages.append(f"Sleep is very low ({hours}h). Focus on stress management and better sleep hygiene.")
+                rec_messages.append("Sleep is very low. Improve sleep hygiene.")
             elif hours < 7:
-                rec_messages.append(f"Sleep duration slightly low ({hours}h). Try reaching 7–8 hours.")
+                rec_messages.append("Sleep duration slightly low. Aim for 7–8 hours.")
             else:
                 rec_messages.append("Sleep duration is healthy.")
 
         elif cat == "hydration":
-            level = data.get("level") or "Unspecified"
+            level = (data.get("level") or "Unspecified").lower()
             reason = data.get("reason") or "Not specified"
+
             summary_lines.append(f"Hydration Level: {level}, Reason: {reason}")
-            if level.lower() in ["low", "moderate"]:
-                rec_messages.append(f"Hydration is {level}. Increase water intake to 7–8 glasses daily.")
-            elif level.lower() == "unspecified":
-                rec_messages.append("Hydration level not specified.")
+
+            if level in ["low", "moderate"]:
+                rec_messages.append("Hydration is low. Increase water intake.")
             else:
                 rec_messages.append("Hydration level is good.")
 
         elif cat == "nutrition":
-            quality = data.get("quality") or "Unspecified"
+            quality = (data.get("quality") or "Unspecified").lower()
             reason = data.get("reason") or "Not specified"
+
             summary_lines.append(f"Nutrition Quality: {quality}, Reason: {reason}")
-            if quality.lower() in ["poor", "average"]:
-                rec_messages.append("Nutrition needs improvement. Reduce junk food and eat balanced meals.")
-            elif quality.lower() == "unspecified":
-                rec_messages.append("Nutrition quality not specified.")
+
+            if quality in ["poor", "average"]:
+                rec_messages.append("Nutrition needs improvement.")
             else:
                 rec_messages.append("Nutrition habits are healthy.")
 
         elif cat == "stress":
-            level = data.get("level") or "Unspecified"
+            level = (data.get("level") or "Unspecified").lower()
             reason = data.get("reason") or "Not specified"
+
             summary_lines.append(f"Stress Level: {level}, Reason: {reason}")
-            if level.lower() == "high":
-                rec_messages.append("High stress detected. Try meditation, breaks, or talking to someone.")
-            elif level.lower() == "medium":
+
+            if level == "high":
+                rec_messages.append("High stress detected. Try relaxation techniques.")
+            elif level == "medium":
                 rec_messages.append("Moderate stress. Take regular breaks.")
-            elif level.lower() == "unspecified":
-                rec_messages.append("Stress level not specified.")
             else:
                 rec_messages.append("Stress levels are low.")
 
         elif cat == "mood":
-            mood_val = data.get("mood") or "Unspecified"
+            mood_val = (data.get("mood") or "Unspecified").lower()
             reason = data.get("reason") or "Not specified"
+
             summary_lines.append(f"Mood: {mood_val}, Reason: {reason}")
-            if mood_val.lower() in ["sad", "angry"]:
-                rec_messages.append("Mood seems low. Consider mindfulness or chatting with AI assistant.")
-            elif mood_val.lower() == "unspecified":
-                rec_messages.append("Mood not specified.")
+
+            if mood_val in ["sad", "angry"]:
+                rec_messages.append("Mood seems low. Consider mindfulness.")
             else:
                 rec_messages.append("Mood is positive.")
 
     final_recommendation = (
-        " ".join(rec_messages) +
-        " You can get personalized health guidance instantly. Click the button below to receive recommendations from our chatbot!"
+        " ".join(rec_messages)
+        + " You can get personalized health guidance instantly. "
+        + "Click the button below to receive recommendations from our chatbot!"
     )
-    health_summary = "Here is a summary of your recent health data:\n" + "\n".join(summary_lines)
+
+    health_summary = (
+        "Here is a summary of your recent health data:\n"
+        + "\n".join(summary_lines)
+    )
 
     return jsonify({
         "recommendation": final_recommendation,
@@ -1685,19 +1714,19 @@ def generate_recommendation():
     })
 
 
-
 # ----------------health_score----------------
 def calculate_health_score(user_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     cursor.execute("""
         SELECT category, input_value
         FROM health_data
-        WHERE user_id = ?
-        AND DATE(created_at) = DATE('now')
+        WHERE user_id = %s
+        AND DATE(created_at) = CURDATE()
         ORDER BY created_at DESC
     """, (user_id,))
+
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -1810,14 +1839,13 @@ def calculate_health_score(user_id):
 
     return score, wellness, " ".join(tips)
 
-
 def generate_ai_tip(score, wellness, latest_data):
     """
     Generates AI-style tips (can be replaced with real AI API later)
     """
 
     # If data incomplete
-    if len(latest_data) < 6:
+    if not latest_data or len(latest_data) < 6:
         return (
             "You have provided limited health data today. "
             "Please complete all modules to receive personalized AI-based insights."
@@ -1830,22 +1858,23 @@ def generate_ai_tip(score, wellness, latest_data):
             "Try 10 minutes of meditation and short walks today."
         )
 
-    if score < 70:
+    elif score < 70:
         return (
             "You are on the right track! "
             "Maintain consistency in sleep and hydration. "
             "Consider breathing exercises or yoga to improve overall wellness."
         )
 
-    return (
-        "Excellent work! Your lifestyle habits are strong. "
-        "Continue maintaining balance. "
-        "You may explore advanced fitness routines or mindfulness meditation."
-    )
-
+    else:
+        return (
+            "Excellent work! Your lifestyle habits are strong. "
+            "Continue maintaining balance. "
+            "You may explore advanced fitness routines or mindfulness meditation."
+        )
 
 
 def get_chatbot_recommendation(health_summary):
+    
     url = "https://api.chatbase.co/api/v1/chat"
 
     headers = {
@@ -1877,7 +1906,13 @@ Health Data:
             return "Chatbot service is currently unavailable."
 
         data = response.json()
-        return data["responses"][0]["message"]["content"]
+        # Safety check in case 'responses' or 'message' key missing
+        if "responses" in data and data["responses"]:
+            msg = data["responses"][0].get("message", {}).get("content")
+            if msg:
+                return msg
+
+        return "Chatbot service returned unexpected data format."
 
     except Exception as e:
         print("Chatbot Error:", e)
@@ -1885,7 +1920,23 @@ Health Data:
 
 
 
-def generate_weekly_summary(rows):
+def generate_weekly_summary(user_id):
+    import json
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT category, input_value
+        FROM health_data
+        WHERE user_id = %s
+        AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+    """, (user_id,))
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
     if not rows:
         return "No sufficient data available for this week."
 
@@ -1896,34 +1947,41 @@ def generate_weekly_summary(rows):
         cat = r["category"]
         val = r["input_value"]
 
+        try:
+            data = json.loads(val)
+        except:
+            continue
+
         if cat == "sleep":
-            sleep.append(int(val))
+            sleep.append(float(data.get("hours", 0)))
+
         elif cat == "hydration":
-            hydration.append(int(val))
+            level = data.get("level", "").lower()
+            hydration.append({"high": 8, "moderate": 6, "low": 4}.get(level, 0))
+
         elif cat == "stress":
-            stress.append(val)
+            stress.append(data.get("level", "").lower())
+
         elif cat == "fitness":
-            try:
-                data = json.loads(val)
-                fitness.append(data.get("minutes", 0))
-            except:
-                pass
+            fitness.append(int(data.get("minutes", 0)))
+
         elif cat == "mood":
-            mood_count[val] = mood_count.get(val, 0) + 1
+            mood_val = data.get("mood", "Unspecified")
+            mood_count[mood_val] = mood_count.get(mood_val, 0) + 1
 
     msg = []
 
-    if sleep and sum(sleep)/len(sleep) < 7:
+    if sleep and sum(sleep) / len(sleep) < 7:
         msg.append("Your sleep duration was below recommended levels.")
     else:
         msg.append("Your sleep routine was mostly consistent.")
 
-    if hydration and sum(hydration)/len(hydration) < 7:
+    if hydration and sum(hydration) / len(hydration) < 7:
         msg.append("Hydration levels were low on several days.")
     else:
         msg.append("You maintained good hydration habits.")
 
-    if fitness and sum(fitness)/len(fitness) < 30:
+    if fitness and sum(fitness) / len(fitness) < 30:
         msg.append("Physical activity needs improvement.")
     else:
         msg.append("Your fitness activity was good this week.")
@@ -1937,38 +1995,60 @@ def generate_weekly_summary(rows):
 
     return " ".join(msg)
 
+def generate_monthly_summary(user_id):
+    import json
 
-def generate_monthly_summary(rows):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT category, input_value
+        FROM health_data
+        WHERE user_id = %s
+        AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+    """, (user_id,))
+
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
     if not rows:
         return "No sufficient data available for this month."
 
     sleep, hydration, fitness = [], [], []
 
     for r in rows:
-        if r["category"] == "sleep":
-            sleep.append(int(r["input_value"]))
-        elif r["category"] == "hydration":
-            hydration.append(int(r["input_value"]))
-        elif r["category"] == "fitness":
-            try:
-                data = json.loads(r["input_value"])
-                fitness.append(data.get("minutes", 0))
-            except:
-                pass
+        cat = r["category"]
+        val = r["input_value"]
+
+        try:
+            data = json.loads(val)
+        except:
+            continue
+
+        if cat == "sleep":
+            sleep.append(float(data.get("hours", 0)))
+
+        elif cat == "hydration":
+            level = data.get("level", "").lower()
+            hydration.append({"high": 8, "moderate": 6, "low": 4}.get(level, 0))
+
+        elif cat == "fitness":
+            fitness.append(int(data.get("minutes", 0)))
 
     msg = []
 
-    if sleep and sum(sleep)/len(sleep) >= 7:
+    if sleep and sum(sleep) / len(sleep) >= 7:
         msg.append("Sleep consistency improved over the month.")
     else:
         msg.append("Sleep routine needs improvement.")
 
-    if hydration and sum(hydration)/len(hydration) >= 8:
+    if hydration and sum(hydration) / len(hydration) >= 8:
         msg.append("Hydration habits were well maintained.")
     else:
         msg.append("Hydration was inconsistent.")
 
-    if fitness and sum(fitness)/len(fitness) >= 30:
+    if fitness and sum(fitness) / len(fitness) >= 30:
         msg.append("Physical activity level was satisfactory.")
     else:
         msg.append("Physical activity was below recommended levels.")
@@ -1978,48 +2058,67 @@ def generate_monthly_summary(rows):
     return " ".join(msg)
 
 
-# ----------------submit-feedback----------------
 @app.route("/submit-feedback", methods=["POST"])
 @login_required
 def submit_feedback():
     user_id = session.get("user_id")
-
     if not user_id:
-        return "User not logged in", 403
+        flash("User not logged in", "danger")
+        return redirect(url_for("dashboard"))
 
-    rating = request.form.get("rating")
-    usefulness = request.form.get("usefulness")
-    feedback_type = request.form.get("feedback_type")
-    improve = request.form.get("improve")
-    feature = request.form.get("feature")
+    # Get form data (STRING VALUES)
+    rating = request.form.get("rating", "").strip()              # 😍 Excellent
+    usefulness = request.form.get("usefulness", "").strip()      # 💚 Very Useful
+    feedback_type = request.form.get("feedback_type", "").strip()
+    improve = request.form.get("improve", "").strip()
+    feature = request.form.get("feature", "").strip()
+
+    # Validation
+    if not rating or not usefulness:
+        flash("Rating and usefulness are required!", "danger")
+        return redirect(url_for("dashboard"))
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    if not conn:
+        flash("Database connection failed!", "danger")
+        return redirect(url_for("dashboard"))
 
-    cursor.execute("""
-        INSERT INTO feedback (
+    try:
+        cursor = conn.cursor()
+
+        # Verify user exists
+        cursor.execute("SELECT id FROM users WHERE id=%s", (user_id,))
+        if not cursor.fetchone():
+            flash("Invalid user session!", "danger")
+            return redirect(url_for("dashboard"))
+
+        # Insert feedback
+        cursor.execute("""
+            INSERT INTO feedback
+            (user_id, rating, usefulness, feedback_type, improve, feature)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
             user_id,
             rating,
             usefulness,
             feedback_type,
             improve,
-            feature,
-            created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-    """, (
-        user_id,
-        rating,
-        usefulness,
-        feedback_type,
-        improve,
-        feature
-    ))
+            feature
+        ))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        flash("✅ Feedback submitted successfully!", "success")
 
+    except Exception as e:
+        print("❌ Feedback insert error:", e)
+        flash("❌ Failed to submit feedback!", "danger")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    # ✅ REDIRECT AFTER SUBMIT
     return redirect(url_for("dashboard"))
-
 
 # ---------------- Admin Login ----------------
 @app.route("/admin/login", methods=["GET", "POST"])
@@ -2029,10 +2128,15 @@ def admin_login():
         password = request.form.get("password")
 
         conn = get_db_connection()
-        cursor = conn.cursor()
-        user = cursor.execute(
-            "SELECT * FROM users WHERE email = ?", (email,)
-        ).fetchone()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute(
+            "SELECT * FROM users WHERE email = %s",
+            (email,)
+        )
+        user = cursor.fetchone()
+
+        cursor.close()
         conn.close()
 
         if user and check_password_hash(user["password"], password) and user["role"] == "admin":
@@ -2060,29 +2164,33 @@ def admin_dashboard():
         return redirect(url_for("dashboard"))
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     # Total users
-    total_users = cursor.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    cursor.execute("SELECT COUNT(*) AS cnt FROM users")
+    total_users = cursor.fetchone()["cnt"]
 
-    # Feedback counts (fake data or dynamic)
-    total_feedback = cursor.execute("SELECT COUNT(*) FROM feedback").fetchone()[0]
-    avg_rating = cursor.execute("SELECT AVG(rating) FROM feedback").fetchone()[0] or 0
-    new_feedback = cursor.execute(
-        "SELECT COUNT(*) FROM feedback WHERE created_at >= datetime('now','-1 day')"
-    ).fetchone()[0]
+    # Feedback stats
+    cursor.execute("SELECT COUNT(*) AS cnt FROM feedback")
+    total_feedback = cursor.fetchone()["cnt"]
+
+    cursor.execute("SELECT AVG(rating) AS avg_rating FROM feedback")
+    avg_rating = cursor.fetchone()["avg_rating"] or 0
+
+    cursor.execute("SELECT COUNT(*) AS cnt FROM feedback WHERE created_at >= NOW() - INTERVAL 1 DAY")
+    new_feedback = cursor.fetchone()["cnt"]
 
     # ---------- USER GROWTH (Last 7 Days) ----------
     user_labels = []
     user_counts = []
 
-    now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)  # convert to IST
+    now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)  # IST
 
-    # Get all user created_at
-    all_users = cursor.execute("SELECT created_at FROM users").fetchall()
-    created_list = [datetime.strptime(u["created_at"], "%Y-%m-%d %H:%M:%S") + timedelta(hours=5, minutes=30) for u in all_users]
+    cursor.execute("SELECT created_at FROM users")
+    all_users = cursor.fetchall()
+    created_list = [u["created_at"] + timedelta(hours=5, minutes=30) for u in all_users]
 
-    for i in range(6, -1, -1):  # last 7 days
+    for i in range(6, -1, -1):
         day_start = (now_ist - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = (now_ist - timedelta(days=i)).replace(hour=23, minute=59, second=59, microsecond=999999)
         count = sum(1 for dt in created_list if day_start <= dt <= day_end)
@@ -2090,8 +2198,9 @@ def admin_dashboard():
         user_counts.append(count)
 
     # ---------- FAKE FEEDBACK PIE CHART ----------
-    rating_distribution = [4, 2, 0, 0, 0]  # you can keep it fake
+    rating_distribution = [4, 2, 0, 0, 0]  # fake data
 
+    cursor.close()
     conn.close()
 
     return render_template(
@@ -2105,45 +2214,55 @@ def admin_dashboard():
         rating_distribution=rating_distribution
     )
 
-# ---------------- Admin Feedback Page ----------------
 
 @app.route("/admin/feedback")
 def admin_feedback():
     if session.get("role") != "admin":
-        flash("Access denied!", "error")
+        flash("Access denied!", "danger")
         return redirect(url_for("dashboard"))
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    if not conn:
+        flash("Database connection failed!", "danger")
+        return redirect(url_for("dashboard"))
 
-    feedbacks = cursor.execute("""
-        SELECT 
-            f.rating,
-            f.usefulness,
-            f.feedback_type,
-            f.improve,
-            f.feature,
-            f.created_at,
-            u.name,
-            u.email
-        FROM feedback f
-        JOIN users u ON f.user_id = u.id
-        ORDER BY f.created_at DESC
-    """).fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor(dictionary=True)
 
-    feedback_list = []
-    for f in feedbacks:
-        feedback_date = f[5]
-        # Convert string to datetime if needed
-        if isinstance(feedback_date, str):
-            feedback_date = datetime.strptime(feedback_date, "%Y-%m-%d %H:%M:%S")
-        # Replace the tuple item with datetime object
-        feedback_list.append(f[:5] + (feedback_date,) + f[6:])
+        cursor.execute("""
+            SELECT 
+                f.rating,
+                f.usefulness,
+                f.feedback_type,
+                f.improve,
+                f.feature,
+                f.created_at,
+                COALESCE(u.name, 'Unknown User') AS name,
+                COALESCE(u.email, 'Deleted / Mismatch') AS email
+            FROM feedback f
+            LEFT JOIN users u ON f.user_id = u.id
+            ORDER BY f.created_at DESC
+        """)
 
-    current_date = datetime.now()
-    return render_template("admin_feedback.html", feedbacks=feedback_list, current_date=current_date)
+        feedbacks = cursor.fetchall()
 
+    except Exception as e:
+        print("❌ Admin feedback fetch error:", e)
+        flash("Failed to load feedback!", "danger")
+        feedbacks = []
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    # IST time (consistent with dashboard)
+    current_date = datetime.utcnow() + timedelta(hours=5, minutes=30)
+
+    return render_template(
+        "admin_feedback.html",
+        feedbacks=feedbacks,
+        current_date=current_date
+    )
 
 @app.route("/admin/feedback/export_pdf")
 def export_feedback_pdf():
@@ -2151,17 +2270,20 @@ def export_feedback_pdf():
         flash("Access denied!", "error")
         return redirect(url_for("dashboard"))
 
-    # Fetch feedback data
     conn = get_db_connection()
-    cursor = conn.cursor()
-    feedbacks = cursor.execute("""
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
         SELECT 
             u.name, u.email, f.rating, f.usefulness, f.feedback_type,
             f.improve, f.feature, f.created_at
         FROM feedback f
         JOIN users u ON f.user_id = u.id
         ORDER BY f.created_at DESC
-    """).fetchall()
+    """)
+    feedbacks = cursor.fetchall()
+
+    cursor.close()
     conn.close()
 
     buffer = io.BytesIO()
@@ -2173,88 +2295,74 @@ def export_feedback_pdf():
     )
 
     styles = getSampleStyleSheet()
-    normal_style = ParagraphStyle('normal', fontName='Helvetica', fontSize=10, leading=12)
-    wrap_style = ParagraphStyle('wrap', fontName='Helvetica', fontSize=10, leading=12, wordWrap='CJK')
+    normal_style = ParagraphStyle('normal', fontSize=10)
+    wrap_style = ParagraphStyle('wrap', fontSize=10, wordWrap='CJK')
 
     elements = []
-
-    # Heading
     elements.append(Paragraph("User Feedback Report", styles['Title']))
     elements.append(Spacer(1, 12))
 
-    # Table Data
     data = [["User", "Email", "Rating", "Useful", "Type", "Improve", "Feature", "Date & Time"]]
+
     for f in feedbacks:
-        # Convert created_at string to datetime if needed
-        feedback_date = f[7]
-        if isinstance(feedback_date, str):
-            feedback_date = datetime.strptime(feedback_date, "%Y-%m-%d %H:%M:%S")
-        # Format in AM/PM
-        formatted_date = feedback_date.strftime("%Y-%m-%d %I:%M %p")
+        dt = f["created_at"]
+        if isinstance(dt, str):
+            dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
 
-        row = [
-            Paragraph(str(f[0]), wrap_style),  # User
-            Paragraph(str(f[1]), wrap_style),  # Email
-            Paragraph(str(f[2]), normal_style),
-            Paragraph(str(f[3]), normal_style),
-            Paragraph(str(f[4]), wrap_style),
-            Paragraph(str(f[5]) if f[5] else "-", wrap_style),
-            Paragraph(str(f[6]) if f[6] else "-", wrap_style),
-            Paragraph(formatted_date, normal_style)  # Formatted date & time
-        ]
-        data.append(row)
+        formatted_date = dt.strftime("%Y-%m-%d %I:%M %p")
 
-    # Page width
-    page_width, page_height = landscape(letter)
-    left_margin = right_margin = 20
-    available_width = page_width - left_margin - right_margin
+        data.append([
+            Paragraph(f["name"], wrap_style),
+            Paragraph(f["email"], wrap_style),
+            Paragraph(str(f["rating"]), normal_style),
+            Paragraph(str(f["usefulness"]), normal_style),
+            Paragraph(f["feedback_type"], wrap_style),
+            Paragraph(f["improve"] or "-", wrap_style),
+            Paragraph(f["feature"] or "-", wrap_style),
+            Paragraph(formatted_date, normal_style)
+        ])
 
-    # Column widths (adjusted for better spacing)
+    page_width, _ = landscape(letter)
+    available_width = page_width - 40
+
     col_widths = [
-        0.13 * available_width,  # User
-        0.22 * available_width,  # Email
-        0.07 * available_width,  # Rating
-        0.07 * available_width,  # Useful
-        0.11 * available_width,  # Type
-        0.14 * available_width,  # Improve
-        0.14 * available_width,  # Feature
-        0.15 * available_width,  # Date & Time
+        0.13 * available_width,
+        0.23 * available_width,
+        0.07 * available_width,
+        0.07 * available_width,
+        0.10 * available_width,
+        0.14 * available_width,
+        0.14 * available_width,
+        0.15 * available_width,
     ]
 
-    table = RLTable(data, colWidths=col_widths, repeatRows=1, hAlign='CENTER')
+    table = RLTable(data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
-        # Header style
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#4e73df")),
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,0), 12),
-        ('BOTTOMPADDING', (0,0), (-1,0), 10),
-        # Body style
         ('GRID', (0,0), (-1,-1), 0.3, colors.black),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ('FONTSIZE', (0,1), (-1,-1), 10),
-        ('LEFTPADDING', (0,1), (-1,-1), 5),
-        ('RIGHTPADDING', (0,1), (-1,-1), 5),
-        ('TOPPADDING', (0,1), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,1), (-1,-1), 5),
     ]))
 
-    # Alternating row colors for readability
     for i in range(1, len(data)):
-        if i % 2 == 0:
-            table.setStyle(TableStyle([('BACKGROUND', (0,i), (-1,i), colors.HexColor("#f8f9fc"))]))
-        else:
-            table.setStyle(TableStyle([('BACKGROUND', (0,i), (-1,i), colors.white)]))
+        bg = "#f8f9fc" if i % 2 == 0 else "#ffffff"
+        table.setStyle(TableStyle([('BACKGROUND', (0,i), (-1,i), colors.HexColor(bg))]))
 
     elements.append(table)
     doc.build(elements)
     buffer.seek(0)
 
-    return send_file(buffer, as_attachment=True, download_name="user_feedback.pdf", mimetype='application/pdf')
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="user_feedback.pdf",
+        mimetype="application/pdf"
+    )
 
 
-# ---------------- Admin User Management ----------------
 @app.route("/admin/users")
 @app.route("/admin/users/<status>")
 def admin_users(status=None):
@@ -2263,31 +2371,27 @@ def admin_users(status=None):
         return redirect(url_for("dashboard"))
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     if status == "active":
-        users = cursor.execute("SELECT * FROM users WHERE is_active = 1").fetchall()
+        cursor.execute("SELECT * FROM users WHERE is_active = 1")
     elif status == "inactive":
-        users = cursor.execute("SELECT * FROM users WHERE is_active = 0").fetchall()
+        cursor.execute("SELECT * FROM users WHERE is_active = 0")
     else:
-        users = cursor.execute("SELECT * FROM users").fetchall()
+        cursor.execute("SELECT * FROM users")
 
+    users = cursor.fetchall()
+    cursor.close()
     conn.close()
 
-    # Convert UTC to IST (+5:30)
-    ist_users = []
     for u in users:
-        created_utc = u["created_at"]
-        if created_utc:
-            # Convert string to datetime
-            dt = datetime.strptime(created_utc, "%Y-%m-%d %H:%M:%S")
-            # Add IST offset
-            dt += timedelta(hours=5, minutes=30)
-            u = dict(u)
-            u["created_at"] = dt.strftime("%Y-%m-%d %H:%M:%S")
-        ist_users.append(u)
+        if u["created_at"]:
+            u["created_at"] = (
+                u["created_at"] + timedelta(hours=5, minutes=30)
+            ).strftime("%Y-%m-%d %H:%M:%S")
 
-    return render_template("admin_users.html", users=ist_users)
+    return render_template("admin_users.html", users=users)
+
 
 @app.route("/admin/user/delete/<int:user_id>", methods=["POST"])
 def admin_delete_user(user_id):
@@ -2297,71 +2401,36 @@ def admin_delete_user(user_id):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+    cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
     conn.commit()
+
+    cursor.close()
     conn.close()
+
     flash("User deleted successfully!", "success")
     return redirect(url_for("admin_users"))
 
 
 
-# ---------------- Cycle Phase Calculation ----------------
-
-def get_cycle_phase(last_period_date, cycle_length=28):
-    today = datetime.today()
-    last_date = datetime.strptime(last_period_date, "%Y-%m-%d")
-    day_diff = (today - last_date).days % cycle_length
-    if day_diff < 0:
-        return "Unknown"
-    elif day_diff <= 5:
-        return "Menstrual Phase"
-    elif day_diff <= 13:
-        return "Follicular Phase"
-    elif day_diff <= 16:
-        return "Ovulation Phase"
-    else:
-        return "Luteal Phase"
-
-# Wellness Summary
-def generate_female_health_summary(record):
-    phase = get_cycle_phase(record["last_period_date"], int(record["cycle_length"]))
-
-    female_health_summary = f"""- Cycle Length: {record['cycle_length']} days
-- Period Duration: {record['period_duration']} days
-- Symptoms: {record['symptoms'] or "None"}"""
-
-    # Wellness Suggestions
-    if phase == "Menstrual Phase":
-        wellness_suggestions = "- Focus on rest, hydration, iron-rich foods, and light stretching."
-    elif phase == "Follicular Phase":
-        wellness_suggestions = "- Energy levels improve. Good time for planning, workouts, and learning."
-    elif phase == "Ovulation Phase":
-        wellness_suggestions = "- Peak confidence and strength. Maintain hydration and balanced nutrition."
-    else:  # Luteal Phase
-        wellness_suggestions = "- Mood may fluctuate. Prioritize sleep, stress control, and self-care."
-
-    # Add the common line
-    wellness_suggestions += "\n\nFor more suggestions and good advice, click the button below to talk to the chatbot."
-
-    return female_health_summary, wellness_suggestions
-
-
 # ---------------- Main Period Page ----------------
-
 @app.route("/period", methods=["GET", "POST"])
 @login_required
 def period():
+    # Only female users
     if session.get("gender") != "female":
         return redirect("/dashboard")
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)  # Ensure dictionary results
 
+    # Fetch the last period record
     cursor.execute("""
         SELECT last_period_date, cycle_length, period_duration, symptoms
         FROM period_tracking
-        WHERE user_id = ?
-        ORDER BY id DESC LIMIT 1
+        WHERE user_id = %s
+        ORDER BY id DESC
+        LIMIT 1
     """, (session["user_id"],))
     record = cursor.fetchone()
 
@@ -2370,11 +2439,21 @@ def period():
     predicted_date = None
     female_health_summary = None
     wellness_suggestions = None
+    phase = None
 
     if record:
-        last_date = datetime.strptime(record["last_period_date"], "%Y-%m-%d")
-        predicted_date = last_date + timedelta(days=int(record["cycle_length"]))
-        female_health_summary, wellness_suggestions = generate_female_health_summary(record)
+        # Convert last_period_date string to date object
+        try:
+            last_date = datetime.strptime(record["last_period_date"], "%Y-%m-%d").date()
+        except ValueError:
+            last_date = None
+
+        if last_date:
+            predicted_date = last_date + timedelta(days=int(record["cycle_length"]))
+            phase = get_cycle_phase(record["last_period_date"], int(record["cycle_length"]))
+            female_health_summary, wellness_suggestions = generate_female_health_summary(record)
+        else:
+            phase = "Unknown"
 
     return render_template(
         "period.html",
@@ -2382,9 +2461,10 @@ def period():
         predicted_date=predicted_date,
         female_health_summary=female_health_summary,
         wellness_suggestions=wellness_suggestions,
-        get_cycle_phase=get_cycle_phase  # <-- Important
+        phase=phase  # <-- Pass phase directly
     )
 
+# ---------------- Add Period Record ----------------
 @app.route("/period/add", methods=["POST"])
 @login_required
 def add_period():
@@ -2405,7 +2485,7 @@ def add_period():
     cursor.execute("""
         INSERT INTO period_tracking
         (user_id, last_period_date, cycle_length, period_duration, symptoms)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
     """, (
         session["user_id"],
         last_period_date,
@@ -2419,6 +2499,7 @@ def add_period():
 
     return redirect("/period")
 
+# ---------------- Period History ----------------
 @app.route("/period/history")
 @login_required
 def period_history():
@@ -2426,11 +2507,11 @@ def period_history():
         return redirect("/dashboard")
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT id, last_period_date, cycle_length, period_duration, symptoms
         FROM period_tracking
-        WHERE user_id = ?
+        WHERE user_id = %s
         ORDER BY last_period_date DESC
     """, (session["user_id"],))
     history = cursor.fetchall()
@@ -2438,11 +2519,12 @@ def period_history():
 
     return render_template("period_history.html", history=history)
 
+# ---------------- Edit Period ----------------
 @app.route("/period/edit/<int:pid>", methods=["GET", "POST"])
 @login_required
 def edit_period(pid):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     if request.method == "POST":
         cycle_length = request.form["cycle_length"]
@@ -2451,8 +2533,8 @@ def edit_period(pid):
 
         cursor.execute("""
             UPDATE period_tracking
-            SET cycle_length=?, period_duration=?, symptoms=?
-            WHERE id=? AND user_id=?
+            SET cycle_length=%s, period_duration=%s, symptoms=%s
+            WHERE id=%s AND user_id=%s
         """, (cycle_length, period_duration, symptoms, pid, session["user_id"]))
 
         conn.commit()
@@ -2462,14 +2544,14 @@ def edit_period(pid):
     cursor.execute("""
         SELECT cycle_length, period_duration, symptoms
         FROM period_tracking
-        WHERE id=? AND user_id=?
+        WHERE id=%s AND user_id=%s
     """, (pid, session["user_id"]))
     record = cursor.fetchone()
     conn.close()
 
     return render_template("edit_period.html", record=record)
 
-
+# ---------------- Delete Period ----------------
 @app.route("/period/delete/<int:record_id>", methods=["POST"])
 @login_required
 def delete_period_record(record_id):
@@ -2481,7 +2563,7 @@ def delete_period_record(record_id):
 
     cursor.execute("""
         DELETE FROM period_tracking
-        WHERE id = ? AND user_id = ?
+        WHERE id = %s AND user_id = %s
     """, (record_id, session["user_id"]))
 
     conn.commit()
@@ -2489,7 +2571,7 @@ def delete_period_record(record_id):
 
     return redirect("/period/history")
 
-# Period Charts Page
+# ---------------- Period Charts ----------------
 @app.route("/period/charts")
 @login_required
 def period_charts():
@@ -2497,11 +2579,11 @@ def period_charts():
         return redirect("/dashboard")
 
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
     cursor.execute("""
         SELECT last_period_date, cycle_length, period_duration, symptoms
         FROM period_tracking
-        WHERE user_id = ?
+        WHERE user_id = %s
         ORDER BY last_period_date ASC
     """, (session["user_id"],))
     history = cursor.fetchall()
@@ -2537,5 +2619,6 @@ def period_charts():
 # ---------------- RUN APP ----------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
 
 

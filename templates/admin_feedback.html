@@ -25,20 +25,30 @@
         <tbody>
             {% for f in feedbacks %}
             <tr>
-                <td>{{ f[6] }}</td>
-                <td>{{ f[7] }}</td>
-                <td>{{ f[0] }}</td>
-                <td>{{ f[1] }}</td>
-                <td>{{ f[2] }}</td>
-                <td>{{ f[3] }}</td>
-                <td>{{ f[4] }}</td>
-                <td>{{ f[5].strftime("%Y-%m-%d %I:%M %p") }}</td>
+                <td>{{ f.name }}</td>
+                <td>{{ f.email }}</td>
+                <td>{{ f.rating }}</td>
+                <td>{{ f.usefulness }}</td>
+                <td>{{ f.feedback_type }}</td>
+                <td>{{ f.improve or '-' }}</td>
+                <td>{{ f.feature or '-' }}</td>
                 <td>
-                    {% set days_diff = (current_date - f[5]).days %}
-                    {% if days_diff <= 2 %}
-                        <span class="status new">New</span>
-                    {% elif days_diff <= 7 %}
-                        <span class="status waiting">Waiting</span>
+                    {% if f.created_at %}
+                        {{ f.created_at.strftime("%Y-%m-%d %I:%M %p") }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if f.created_at %}
+                        {% set days_diff = (current_date - f.created_at).days %}
+                        {% if days_diff <= 2 %}
+                            <span class="status new">New</span>
+                        {% elif days_diff <= 7 %}
+                            <span class="status waiting">Waiting</span>
+                        {% else %}
+                            <span class="status reviewed">Reviewed</span>
+                        {% endif %}
                     {% else %}
                         <span class="status reviewed">Reviewed</span>
                     {% endif %}
