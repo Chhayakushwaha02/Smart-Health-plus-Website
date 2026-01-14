@@ -10,4 +10,3 @@ python-dotenv
 APScheduler
 Twilio
 psycopg2-binary
-mysql-connector-python

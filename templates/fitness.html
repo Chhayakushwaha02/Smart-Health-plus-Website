@@ -129,8 +129,7 @@ Workout Type: ${lastSavedFitnessData.type || "Not specified"}
 Daily Steps: ${lastSavedFitnessData.steps || "Not provided"}`;
 
     navigator.clipboard.writeText(text).then(() => {
-        alert("Your fitness data is copied.\n\n" +
-             "Just paste (Ctrl + V) it into the chatbot to get personalized advice.")
+        alert("Your fitness data is copied.\nPaste it into the chatbot for guidance.");
         window.location.href = "/chatbot";
     });
 }
