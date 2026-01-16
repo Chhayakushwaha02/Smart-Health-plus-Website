@@ -570,16 +570,21 @@ def save_reminder():
     data = request.json
 
     reminder_type = data.get("type")
-    reminder_time = data.get("time")
-    reminder_email = data.get("email")      # 🔥 IMPORTANT
-    reminder_phone = data.get("phone")      # 🔥 IMPORTANT
+    reminder_time = data.get("time")  # "HH:MM"
+    reminder_email = data.get("email")
+    reminder_phone = data.get("phone")
 
     if not reminder_type or not reminder_time:
         return jsonify({"message": "Reminder type and time are required"}), 400
 
     user_id = session["user_id"]
 
-    # ---------------- Save reminder properly ----------------
+    # 🔥 Convert to timezone-aware datetime (IST)
+    hour, minute = map(int, reminder_time.split(":"))
+    reminder_at = datetime.now(
+        ZoneInfo("Asia/Kolkata")
+    ).replace(hour=hour, minute=minute, second=0, microsecond=0)
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -587,27 +592,26 @@ def save_reminder():
         INSERT INTO reminders (
             user_id,
             reminder_type,
-            reminder_time,
+            reminder_at,
             reminder_email,
             reminder_phone
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
     """, (
         user_id,
         reminder_type,
-        reminder_time,
+        reminder_at,
         reminder_email,
         reminder_phone
     ))
 
+    reminder_id = cursor.fetchone()[0]
     conn.commit()
-    reminder_id = cursor.lastrowid
     cursor.close()
     conn.close()
 
-    hour, minute = map(int, reminder_time.split(":"))
-
-    # ---------------- Reminder Job ----------------
+    # ---------------- Scheduler Job ----------------
     def reminder_job(rem_id=reminder_id, rtype=reminder_type):
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -616,7 +620,7 @@ def save_reminder():
             SELECT r.reminder_email, r.reminder_phone, u.name
             FROM reminders r
             JOIN users u ON u.id = r.user_id
-            WHERE r.id = ?
+            WHERE r.id = %s
         """, (rem_id,))
 
         row = cursor.fetchone()
@@ -624,88 +628,59 @@ def save_reminder():
         conn.close()
 
         if not row:
-            print("❌ Reminder not found")
             return
 
-        email = row["reminder_email"]
-        phone = row["reminder_phone"]
-        name = row["name"]
-
+        email, phone, name = row
         message = f"⏰ Hi {name}, this is your {rtype} reminder 🌸"
 
-        # ---------------- Email (ALWAYS WORKS) ----------------
         if email:
             send_email(email, "SmartHealthPlus Reminder", message)
-
-        # ---------------- SMS (OPTIONAL / TRIAL LIMIT) ----------------
         if phone:
             send_sms(phone, message)
 
-    # ---------------- Unique Job ID ----------------
-    job_id = f"reminder_{reminder_id}"
-
     scheduler.add_job(
         reminder_job,
-        trigger="cron",
-        hour=hour,
-        minute=minute,
-        id=job_id,
+        trigger="date",
+        run_date=reminder_at,
+        id=f"reminder_{reminder_id}",
         replace_existing=True
     )
 
-    return jsonify({
-        "message": f"{reminder_type.capitalize()} reminder set successfully"
-    })
+    return jsonify({"message": "Reminder set successfully"})
 
 
 @app.route("/reminder-history")
 @login_required
 def reminder_history():
     user_id = session["user_id"]
+
     conn = get_db_connection()
     cursor = conn.cursor()
+
     cursor.execute("""
-        SELECT id, reminder_type, reminder_time, created_at
+        SELECT id, reminder_type, reminder_at
         FROM reminders
-        WHERE user_id = ?
-        ORDER BY created_at DESC
+        WHERE user_id = %s
+        ORDER BY reminder_at DESC
     """, (user_id,))
+
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
 
     reminders = []
-    for r in rows:
-        # Format time to 12-hour AM/PM
-        time_str = r["reminder_time"]
-        try:
-            dt_obj = datetime.strptime(time_str, "%H:%M")
-            formatted_time = dt_obj.strftime("%I:%M %p")  # 12-hour format
-        except:
-            formatted_time = time_str
-
-        # ---------------- Correct timezone for created_at ----------------
-        try:
-            dt_created = datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S")
-            
-            # Assuming your server stores UTC, convert to India Standard Time (UTC+5:30)
-            dt_created = dt_created.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Asia/Kolkata"))
-            
-            reminder_date = dt_created.date()
-        except:
-            reminder_date = date.today()  # fallback
+    for rid, rtype, reminder_at in rows:
+        reminder_at_ist = reminder_at.astimezone(ZoneInfo("Asia/Kolkata"))
 
         reminders.append({
-            "id": r["id"],
-            "reminder_type": r["reminder_type"],
-            "formatted_time": formatted_time,
-            "reminder_date": reminder_date
+            "id": rid,
+            "reminder_type": rtype,
+            "formatted_time": reminder_at_ist.strftime("%I:%M %p"),
+            "reminder_date": reminder_at_ist.date()
         })
 
-    return render_template(
-        "reminder_history.html",
-        reminders=reminders
-    )
+    return render_template("reminder_history.html", reminders=reminders)
+
 
 # ------------------- Delete Reminder -------------------
 @app.route("/delete-reminder/<int:reminder_id>", methods=["POST"])
@@ -714,7 +689,7 @@ def delete_reminder(reminder_id):
     user_id = session["user_id"]
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM reminders WHERE id = ? AND user_id = ?", (reminder_id, user_id))
+    cursor.execute("DELETE FROM reminders WHERE id = %s AND user_id = %s", (reminder_id, user_id))
     conn.commit()
     cursor.close()
     conn.close()
