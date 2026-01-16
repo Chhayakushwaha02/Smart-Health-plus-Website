@@ -140,7 +140,7 @@ def register():
         cursor = conn.cursor()
 
         # Check if email already exists
-        cursor.execute("SELECT id FROM users WHERE email=?", (email,))
+        cursor.execute("SELECT id FROM users WHERE email=%s", (email,))
         if cursor.fetchone():
             conn.close()
             return jsonify(success=False, message="Email already exists")
@@ -148,7 +148,14 @@ def register():
         # Insert user
         cursor.execute("""
             INSERT INTO users (name, age, gender, mobile, email, password, role)
-            VALUES (?,?,?,?,?,?,?)
+            VALUES (%s
+,%s
+,%s
+,%s
+,%s
+,%s
+,%s
+)
         """, (name, age, gender, mobile, email, hashed, role))
 
 
@@ -181,7 +188,7 @@ def login():
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE email=?", (email,))
+    cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
     user = cursor.fetchone()
     conn.close()
 
@@ -231,7 +238,7 @@ def google_login():
         "access_type": "offline",
         "prompt": "select_account"  # <- Forces account selection
     }
-    return redirect(f"{GOOGLE_AUTH_ENDPOINT}?{urlencode(params)}")
+    return redirect(f"{GOOGLE_AUTH_ENDPOINT}%s{urlencode(params)}")
 
 
 @app.route("/auth/google/callback")
@@ -267,11 +274,11 @@ def google_callback():
     # Check / insert user in SQLite
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, role, gender FROM users WHERE email=?", (email,))
+    cursor.execute("SELECT id, role, gender FROM users WHERE email=%s", (email,))
     user = cursor.fetchone()
     if not user:
         cursor.execute(
-            "INSERT INTO users (name, email, role, auth_provider) VALUES (?, ?, ?, ?)",
+            "INSERT INTO users (name, email, role, auth_provider) VALUES (%s, %s, %s, %s)",
             (name, email, "user", "google")
         )
         conn.commit()
@@ -313,13 +320,13 @@ def google_session():
     cursor = conn.cursor()
 
     # Fetch user including gender
-    cursor.execute("SELECT id, role, name, gender FROM users WHERE email=?", (email,))
+    cursor.execute("SELECT id, role, name, gender FROM users WHERE email=%s", (email,))
     user = cursor.fetchone()
 
     if not user:
         # If new Google user, insert into DB without gender (can ask later)
         cursor.execute(
-            "INSERT INTO users (name, email, role, auth_provider) VALUES (?, ?, ?, ?)",
+            "INSERT INTO users (name, email, role, auth_provider) VALUES (%s, %s, %s, %s)",
             (name, email, "user", "google")
         )
         conn.commit()
@@ -429,7 +436,8 @@ def goal():
     cursor.execute("""
         SELECT category, input_value
         FROM health_data
-        WHERE user_id=?
+        WHERE user_id=%s
+
         ORDER BY created_at DESC
     """, (session["user_id"],))
     rows = cursor.fetchall()
@@ -730,7 +738,7 @@ def profile():
 
     # ----------------- USER INFO -----------------
     cursor.execute(
-        "SELECT name, email, mobile, age, gender FROM users WHERE id=?",
+        "SELECT name, email, mobile, age, gender FROM users WHERE id=%s",
         (user_id,)
     )
     user = cursor.fetchone()
@@ -741,7 +749,9 @@ def profile():
     cursor.execute("""
         SELECT category, input_value, recommendation, created_at
         FROM health_data
-        WHERE user_id=? AND created_at >= ?
+        WHERE user_id=%s
+ AND created_at >= %s
+
         ORDER BY created_at DESC
     """, (user_id, seven_days_ago))
 
@@ -885,7 +895,8 @@ def profile():
     cursor.execute("""
         SELECT category, input_value, created_at
         FROM health_data
-        WHERE user_id=? AND DATE(created_at) >= DATE('now','-7 day')
+        WHERE user_id=%s
+ AND DATE(created_at) >= DATE('now','-7 day')
     """, (user_id,))
     weekly_rows = cursor.fetchall()
 
@@ -916,7 +927,8 @@ def profile():
     cursor.execute("""
         SELECT category, input_value, created_at
         FROM health_data
-        WHERE user_id=? AND DATE(created_at) >= DATE('now','-30 day')
+        WHERE user_id=%s
+ AND DATE(created_at) >= DATE('now','-30 day')
     """, (user_id,))
     monthly_rows = cursor.fetchall()
 
@@ -986,14 +998,23 @@ def update_profile():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    query = "UPDATE users SET name=?, email=?, mobile=?, gender=?, age=?"
+    query = """
+    UPDATE users
+    SET
+        name = %s,
+        email = %s,
+        mobile = %s,
+        gender = %s,
+        age = %s
+    """
+
     params = [name, email, mobile, gender_normalized, age]
 
     if password_hashed:
-        query += ", password=?"
+        query += ", password=%s"
         params.append(password_hashed)
 
-    query += " WHERE id=?"
+    query += " WHERE id=%s"
     params.append(user_id)
 
     cursor.execute(query, params)
@@ -1042,7 +1063,7 @@ def download_health_report():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("SELECT name, email, mobile FROM users WHERE id=?", (user_id,))
+    cursor.execute("SELECT name, email, mobile FROM users WHERE id=%s", (user_id,))
     user = cursor.fetchone()
 
     if not user:
@@ -1051,8 +1072,11 @@ def download_health_report():
     cursor.execute("""
         SELECT category, input_value, recommendation, created_at
         FROM health_data
-        WHERE user_id = ?
-          AND DATE(created_at) BETWEEN ? AND ?
+        WHERE user_id = %s
+
+          AND DATE(created_at) BETWEEN %s
+ AND %s
+
         ORDER BY created_at ASC
     """, (user_id, start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")))
 
@@ -1199,7 +1223,7 @@ def reset_password():
     # Update password in DB
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET password = ? WHERE email = ?", (hashed_password, email))
+    cursor.execute("UPDATE users SET password = %s WHERE email = %s", (hashed_password, email))
     conn.commit()
     updated_rows = cursor.rowcount
     conn.close()
@@ -1500,7 +1524,12 @@ def save_health_data_route():
         cursor.execute("""
             INSERT INTO health_data 
             (user_id, category, input_value, recommendation, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s
+, %s
+, %s
+, %s
+, %s
+)
         """, (
             user_id,
             category,
@@ -1531,7 +1560,8 @@ def generate_recommendation():
     cursor.execute("""
         SELECT category, input_value
         FROM health_data
-        WHERE user_id = ?
+        WHERE user_id = %s
+
         ORDER BY created_at DESC
     """, (user_id,))
     rows = cursor.fetchall()
@@ -1669,7 +1699,8 @@ def calculate_health_score(user_id):
     cursor.execute("""
         SELECT category, input_value
         FROM health_data
-        WHERE user_id = ?
+        WHERE user_id = %s
+
         AND DATE(created_at) = DATE('now')
         ORDER BY created_at DESC
     """, (user_id,))
@@ -1980,7 +2011,13 @@ def submit_feedback():
             improve,
             feature,
             created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        ) VALUES (%s
+, %s
+, %s
+, %s
+, %s
+, %s
+, datetime('now'))
     """, (
         user_id,
         rating,
@@ -2006,7 +2043,7 @@ def admin_login():
         conn = get_db_connection()
         cursor = conn.cursor()
         user = cursor.execute(
-            "SELECT * FROM users WHERE email = ?", (email,)
+            "SELECT * FROM users WHERE email = %s", (email,)
         ).fetchone()
         conn.close()
 
@@ -2272,7 +2309,7 @@ def admin_delete_user(user_id):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
     conn.commit()
     conn.close()
     flash("User deleted successfully!", "success")
@@ -2335,7 +2372,8 @@ def period():
     cursor.execute("""
         SELECT last_period_date, cycle_length, period_duration, symptoms
         FROM period_tracking
-        WHERE user_id = ?
+        WHERE user_id = %s
+
         ORDER BY id DESC LIMIT 1
     """, (session["user_id"],))
     record = cursor.fetchone()
@@ -2380,7 +2418,12 @@ def add_period():
     cursor.execute("""
         INSERT INTO period_tracking
         (user_id, last_period_date, cycle_length, period_duration, symptoms)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s
+, %s
+, %s
+, %s
+, %s
+)
     """, (
         session["user_id"],
         last_period_date,
@@ -2405,7 +2448,8 @@ def period_history():
     cursor.execute("""
         SELECT id, last_period_date, cycle_length, period_duration, symptoms
         FROM period_tracking
-        WHERE user_id = ?
+        WHERE user_id = %s
+
         ORDER BY last_period_date DESC
     """, (session["user_id"],))
     history = cursor.fetchall()
@@ -2426,8 +2470,13 @@ def edit_period(pid):
 
         cursor.execute("""
             UPDATE period_tracking
-            SET cycle_length=?, period_duration=?, symptoms=?
-            WHERE id=? AND user_id=?
+            SET cycle_length=%s
+, period_duration=%s
+, symptoms=%s
+
+            WHERE id=%s
+ AND user_id=%s
+
         """, (cycle_length, period_duration, symptoms, pid, session["user_id"]))
 
         conn.commit()
@@ -2437,7 +2486,9 @@ def edit_period(pid):
     cursor.execute("""
         SELECT cycle_length, period_duration, symptoms
         FROM period_tracking
-        WHERE id=? AND user_id=?
+        WHERE id=%s
+ AND user_id=%s
+
     """, (pid, session["user_id"]))
     record = cursor.fetchone()
     conn.close()
@@ -2456,7 +2507,9 @@ def delete_period_record(record_id):
 
     cursor.execute("""
         DELETE FROM period_tracking
-        WHERE id = ? AND user_id = ?
+        WHERE id = %s
+ AND user_id = %s
+
     """, (record_id, session["user_id"]))
 
     conn.commit()
@@ -2476,7 +2529,8 @@ def period_charts():
     cursor.execute("""
         SELECT last_period_date, cycle_length, period_duration, symptoms
         FROM period_tracking
-        WHERE user_id = ?
+        WHERE user_id = %s
+
         ORDER BY last_period_date ASC
     """, (session["user_id"],))
     history = cursor.fetchall()
