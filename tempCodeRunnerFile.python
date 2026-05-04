@@ -1,0 +1,15 @@
+# Create and write
+with open("file.txt", "w") as f:
+    f.write("Hello World")
+
+# Read
+with open("file.txt", "r") as f:
+    print(f.read())
+
+# Append
+with open("file.txt", "a") as f:
+    f.write("\nNew Line")
+
+# Copy
+import shutil
+shutil.copy("file.txt", "copy.txt")
